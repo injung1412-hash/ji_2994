@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>산업연관표 분석 웹앱</title>
+<meta name="description" content="한국은행 2023년 산업연관표(연장표) 기본부문·소분류·중분류·대분류 투입산출표를 브라우저(Pyodide)에서 분석하는 웹앱">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=Noto+Serif+KR:wght@600;700&display=swap">
+<link rel="stylesheet" href="./style.css">
+<script defer src="./app.js"></script>
+</head>
+<body>
+<header class="hero">
+  <div class="wrap">
+    <div>
+      <div class="hero-meta">
+        <span class="tag">한국은행 2023년 산업연관표(연장표)</span>
+        <span class="tag">생산자가격</span>
+        <span class="tag">단위 백만원</span>
+      </div>
+      <p class="kicker">380개 산업이 서로 사고파는 한국 경제의 지도</p>
+      <h1>산업연관표 <em>분석 웹앱</em></h1>
+      <p class="lead">투입산출표 <strong>기본부문·통합소분류·통합중분류·통합대분류</strong>를 불러와 산업구조, 투입·배분구조, 생산·부가가치·수입·취업 유발효과, 수요충격, 가격파급을 계산합니다. 계산은 모두 방문자 브라우저 안의 Python(Pyodide)에서 이뤄집니다.</p>
+      <div class="hero-facts">
+        <div><b>380·165·83·33</b><span>4개 분류 부문 수</span></div>
+        <div><b>12</b><span>분류별 원표 시트</span></div>
+        <div><b>381</b><span>보도자료 대조 항목</span></div>
+      </div>
+    </div>
+    <figure class="io-figure" aria-labelledby="io-cap">
+      <figcaption id="io-cap"><span>투입산출표의 구조 (2023년, 조원)</span><span id="hero-src">한국은행 보도자료 기준</span></figcaption>
+      <svg viewBox="0 0 520 300" role="img" aria-label="투입산출표 구조도: 중간거래, 최종수요, 부가가치, 총산출">
+        <defs>
+          <pattern id="cells" width="22" height="17.5" patternUnits="userSpaceOnUse"><path d="M22 0V17.5M0 17.5H22" class="grid-line"/></pattern>
+        </defs>
+        <text class="t-ax" x="180" y="28" text-anchor="middle">중간수요 (산업 × 산업)</text>
+        <text class="t-ax" x="358" y="28" text-anchor="middle">최종수요</text>
+        <text class="t-ax" x="468" y="28" text-anchor="middle">총산출</text>
+        <text class="t-ax" transform="rotate(-90 40 110)" x="40" y="110" text-anchor="middle">중간투입</text>
+        <text class="t-ax" transform="rotate(-90 40 214)" x="40" y="214" text-anchor="middle">부가가치</text>
+        <text class="t-ax" x="40" y="270" text-anchor="middle">총투입</text>
+        <rect class="blk" x="70" y="40" width="220" height="140" rx="4" fill="var(--cell-z)"/>
+        <rect x="70" y="40" width="220" height="140" rx="4" fill="url(#cells)"/>
+        <text class="t-h" x="84" y="64">중간거래 Z</text>
+        <text class="t-s" x="84" y="80">산업 간 원재료·서비스 거래 (국산+수입)</text>
+        <text class="t-n" id="hero-z" x="84" y="164">3,403.4</text>
+        <rect class="blk" x="296" y="40" width="124" height="140" rx="4" fill="var(--cell-f)"/>
+        <text class="t-h" x="308" y="64">최종수요 Y</text>
+        <text class="t-s" x="308" y="80">소비·투자·수출</text>
+        <text class="t-n" id="hero-f" x="308" y="164">3,399.2</text>
+        <rect class="blk" x="426" y="40" width="84" height="140" rx="4" fill="var(--cell-t)"/>
+        <text class="t-h" x="436" y="64">x</text>
+        <text class="t-s" x="436" y="80">국내 생산</text>
+        <text class="t-n" id="hero-x" x="436" y="164">5,786.7</text>
+        <rect class="blk" x="70" y="186" width="220" height="56" rx="4" fill="var(--cell-v)"/>
+        <text class="t-h" x="84" y="209">부가가치 V</text>
+        <text class="t-n" id="hero-va" x="276" y="210" text-anchor="end">2,383.3</text>
+        <text class="t-s" x="84" y="230">피용자보수·영업잉여·고정자본소모 등</text>
+        <rect class="blk" x="70" y="248" width="220" height="34" rx="4" fill="var(--cell-t)"/>
+        <text class="t-h" x="84" y="270">총투입 = 총산출</text>
+        <text class="t-n" id="hero-x2" x="276" y="270" text-anchor="end">5,786.7</text>
+        <path class="arrow" d="M300 214 H404 Q414 214 414 204 V186"/>
+        <text class="t-s" x="306" y="234">각 열의 합 = 각 행의 합</text>
+      </svg>
+      <p class="note" id="hero-note">수입 1,016.0조원 · 총공급 6,802.7조원 · 부가가치율 41.2% · 생산유발계수 1.827</p>
+    </figure>
+  </div>
+</header>
+
+<div class="wrap app">
+  <!-- ============ 사이드바 ============ -->
+  <aside class="side" aria-label="분석 메뉴">
+    <div class="side-block">
+      <p class="side-label">분석 기준 분류</p>
+      <div class="seg" id="level-seg" role="group" aria-label="분석 기준 분류">
+        <button type="button" data-level="basic" disabled>기본부문<small>380</small></button>
+        <button type="button" data-level="small" disabled>소분류<small>165</small></button>
+        <button type="button" data-level="mid" disabled>중분류<small>83</small></button>
+        <button type="button" data-level="large" disabled>대분류<small>33</small></button>
+      </div>
+      <p class="seg-empty" id="seg-empty">불러온 분류만 고를 수 있습니다.</p>
+    </div>
+    <div class="side-block side-nav-block">
+      <nav class="nav tabs" role="tablist" aria-label="분석 화면">
+        <p class="nav-group">자료</p>
+        <button role="tab" data-tab="explorer" aria-selected="true"><span class="ix">01</span>원자료 탐색</button>
+        <button role="tab" data-tab="classify"><span class="ix">02</span>부문분류 검색</button>
+        <p class="nav-group">구조 분석</p>
+        <button role="tab" data-tab="structure"><span class="ix">03</span>경제·산업구조</button>
+        <button role="tab" data-tab="linkage"><span class="ix">04</span>투입·배분구조</button>
+        <button role="tab" data-tab="mult"><span class="ix">05</span>유발계수·연관도</button>
+        <button role="tab" data-tab="fd"><span class="ix">06</span>최종수요 항목별</button>
+        <p class="nav-group">파급효과 분석</p>
+        <button role="tab" data-tab="sim"><span class="ix">07</span>수요충격 시뮬레이터</button>
+        <button role="tab" data-tab="price"><span class="ix">08</span>가격파급효과</button>
+        <button role="tab" data-tab="compare"><span class="ix">09</span>분류수준 비교</button>
+        <p class="nav-group">검증·방법</p>
+        <button role="tab" data-tab="verify"><span class="ix">10</span>계산 검증</button>
+        <button role="tab" data-tab="method"><span class="ix">11</span>방법·단위</button>
+      </nav>
+    </div>
+    <p class="side-source">자료: 한국은행 「2023년 산업연관표(연장표)」(2025.9.24), 2020 기준년 상품분류표, 보도자료 별첨 통계표.</p>
+  </aside>
+
+  <main class="content">
+    <!-- ============ 자료 불러오기 ============ -->
+    <section class="panel" id="loader" aria-labelledby="loader-h">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">시작하기</p>
+          <h2 id="loader-h">투입산출표 불러오기</h2>
+          <p class="panel-desc">분류를 누르면 한국은행 엑셀을 내려받아 Python으로 12개 시트를 읽고, 원표의 계수와 앱의 재계산 결과를 바로 대조합니다. 처음엔 가장 가벼운 <b>통합대분류</b>를 추천합니다.</p>
+        </div>
+      </div>
+      <div class="levels">
+        <button type="button" class="load-btn" data-level="basic" data-state="idle">
+          <span class="lv-top"><span class="lv-name">기본부문</span><span class="lv-n">380</span></span>
+          <span class="lv-glyph" data-n="380" aria-hidden="true"></span>
+          <span class="lv-foot"><span>12.3MB · 4자리 코드</span><span class="lv-state">불러오기</span></span>
+        </button>
+        <button type="button" class="load-btn" data-level="small" data-state="idle">
+          <span class="lv-top"><span class="lv-name">통합소분류</span><span class="lv-n">165</span></span>
+          <span class="lv-glyph" data-n="165" aria-hidden="true"></span>
+          <span class="lv-foot"><span>3.1MB · 3자리 코드</span><span class="lv-state">불러오기</span></span>
+        </button>
+        <button type="button" class="load-btn" data-level="mid" data-state="idle">
+          <span class="lv-top"><span class="lv-name">통합중분류</span><span class="lv-n">83</span></span>
+          <span class="lv-glyph" data-n="83" aria-hidden="true"></span>
+          <span class="lv-foot"><span>1.2MB · 2자리 코드</span><span class="lv-state">불러오기</span></span>
+        </button>
+        <button type="button" class="load-btn" data-level="large" data-state="idle">
+          <span class="lv-top"><span class="lv-name">통합대분류</span><span class="lv-n">33</span></span>
+          <span class="lv-glyph" data-n="33" aria-hidden="true"></span>
+          <span class="lv-foot"><span>0.6MB · A~T 코드</span><span class="lv-state">불러오기</span></span>
+        </button>
+      </div>
+      <div class="load-row">
+        <p id="status" role="status" class="status">분류 카드를 누르거나 「4개 분류 모두」를 누르세요. 첫 실행 때 Python 환경 준비에 10~30초 걸립니다.</p>
+        <button type="button" id="load-all">4개 분류 모두 불러오기</button>
+      </div>
+      <div class="progress" aria-hidden="true"><div id="progress-bar"></div></div>
+      <div class="row"><span id="level-badges" class="badges"></span></div>
+      <details class="upload">
+        <summary>같은 한국은행 양식의 다른 엑셀 파일 직접 올리기(선택)</summary>
+        <p class="muted small">ECOS에서 내려받은 투입산출표(생산자가격)를 분류를 지정해 올릴 수 있습니다. 파일은 브라우저 안에서만 처리되며 어디로도 전송되지 않습니다.</p>
+        <div class="row">
+          <select id="upload-level" aria-label="올릴 파일의 분류">
+            <option value="basic">기본부문(380)</option><option value="small">통합소분류(165)</option>
+            <option value="mid">통합중분류(83)</option><option value="large">통합대분류(33)</option>
+          </select>
+          <input type="file" id="upload-file" accept=".xlsx" aria-label="엑셀 파일 선택">
+        </div>
+      </details>
+    </section>
+
+    <!-- 빈 상태 템플릿은 각 탭에 반복 배치 -->
+
+    <!-- ============ ① 원자료 탐색 ============ -->
+    <section class="panel tab" id="tab-explorer" role="tabpanel">
+      <div class="panel-head"><div>
+        <p class="eyebrow">자료 · 01</p>
+        <h2>원자료 탐색</h2>
+        <p class="panel-desc">투입산출표 12개 시트, 별첨 통계표 20종, 부문분류표를 시트·행·열 단위로 찾아봅니다. 산업 행뿐 아니라 합계(9xxx)·분석지표 행도 포함되며, 모든 셀에 단위가 붙습니다.</p>
+      </div></div>
+      <div class="empty-state">
+        <svg viewBox="0 0 64 64" aria-hidden="true"><rect x="6" y="10" width="52" height="44" rx="5" fill="var(--surface)" stroke="var(--line)"/><path d="M6 22h52M24 10v44M41 10v44M6 34h52M6 46h52" stroke="var(--line)"/><rect x="24" y="22" width="17" height="12" fill="var(--data-soft)"/></svg>
+        <div><p><b>아직 불러온 표가 없습니다.</b> 분류를 하나 불러오면 시트 목록, 행·열 검색, 셀별 단위가 이곳에 나타납니다.</p>
+          <button type="button" class="ghost quick-load" data-level="large">통합대분류 불러오기 (가장 빠름)</button></div>
+      </div>
+      <div class="needs-data">
+        <div class="controls">
+          <div class="grid3">
+            <label>자료<select id="ex-dataset" disabled></select></label>
+            <label>시트<select id="ex-sheet" disabled></select></label>
+            <label>보기 방식<select id="ex-mode" disabled><option value="row">행 선택 → 각 열 값</option><option value="col">열 선택 → 각 행 값</option></select></label>
+          </div>
+          <div class="grid2" id="ex-pick">
+            <label>행·열 이름 또는 코드 검색<input id="ex-search" placeholder="예: 자동차, 9690, 부가가치" disabled></label>
+            <label>선택<select id="ex-item" disabled></select></label>
+          </div>
+          <label>표 안에서 찾기<input id="ex-filter" placeholder="표시된 항목 중 이름·코드로 거르기" disabled></label>
+        </div>
+        <p id="ex-unit" class="unit-note"></p>
+        <div class="scroll"><table id="ex-table"><caption id="ex-caption">자료를 불러온 후 표시됩니다.</caption></table></div>
+      </div>
+    </section>
+
+    <!-- ============ ② 부문분류 검색 ============ -->
+    <section class="panel tab" id="tab-classify" role="tabpanel" hidden>
+      <div class="panel-head"><div>
+        <p class="eyebrow">자료 · 02</p>
+        <h2>부문분류 연계 검색</h2>
+        <p class="panel-desc">「2020 기준년 상품분류(투입산출표)」로 기본부문 ⊂ 통합소분류 ⊂ 통합중분류 ⊂ 통합대분류의 포함 관계를 찾습니다. 불러온 분류는 2023년 총산출(백만원)도 함께 보여줍니다.</p>
+      </div></div>
+      <div class="empty-state">
+        <svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="14" cy="32" r="7" fill="var(--data)"/><circle cx="34" cy="18" r="5" fill="var(--data-soft)"/><circle cx="34" cy="46" r="5" fill="var(--data-soft)"/><circle cx="52" cy="12" r="3.5" fill="var(--line)"/><circle cx="52" cy="24" r="3.5" fill="var(--line)"/><circle cx="52" cy="40" r="3.5" fill="var(--line)"/><circle cx="52" cy="52" r="3.5" fill="var(--line)"/><path d="M20 30 30 20M20 34l10 10M38 17l11-4M38 20l11 3M38 44l11-3M38 47l11 4" stroke="var(--muted)"/></svg>
+        <div><p><b>부문분류표는 첫 분류를 불러올 때 함께 읽힙니다.</b> 「반도체」, 「4011」, 「C09」처럼 이름이나 코드로 4개 분류를 한 번에 찾을 수 있습니다.</p>
+          <button type="button" class="ghost quick-load" data-level="large">통합대분류 불러오기</button></div>
+      </div>
+      <div class="needs-data">
+        <label>상품명·코드 검색<input id="cl-q" placeholder="예: 반도체, 자동차, 4011, C09" disabled></label>
+        <p id="cl-count" class="muted small"></p>
+        <div class="scroll tall"><table id="cl-table"></table></div>
+      </div>
+    </section>
+
+    <!-- ============ ③ 경제·산업구조 ============ -->
+    <section class="panel tab" id="tab-structure" role="tabpanel" hidden>
+      <div class="panel-head"><div>
+        <p class="eyebrow">구조 분석 · 03</p>
+        <h2>경제구조와 산업구조</h2>
+        <p class="panel-desc">한국은행 「주요 용어 해설」의 정의대로 계산합니다. 전산업 지표는 어느 분류로 계산해도 같고, 부문별 지표는 선택한 분류의 부문 단위입니다.</p>
+      </div><span class="formula">부가가치율 = 부가가치 ÷ 총투입</span></div>
+      <div class="empty-state">
+        <svg viewBox="0 0 64 64" aria-hidden="true"><rect x="8" y="36" width="9" height="20" rx="2" fill="var(--data-soft)"/><rect x="22" y="24" width="9" height="32" rx="2" fill="var(--data)"/><rect x="36" y="30" width="9" height="26" rx="2" fill="var(--data-soft)"/><rect x="50" y="14" width="9" height="42" rx="2" fill="var(--data)"/></svg>
+        <div><p><b>총공급·총산출·부가가치 같은 거시 흐름과</b> 부문별 부가가치율·중간투입률·국산화율·수입의존도·수출률이 여기에 나옵니다.</p>
+          <button type="button" class="ghost quick-load" data-level="large">통합대분류 불러오기</button></div>
+      </div>
+      <div class="needs-data">
+        <div id="macro" class="cards"></div>
+        <h3>부문별 구조 지표</h3>
+        <div class="controls"><div class="grid3">
+          <label>막대그래프 지표<select id="st-metric"></select></label>
+          <label>표시 개수<select id="st-top"><option>15</option><option selected>20</option><option>30</option><option value="9999">전체</option></select></label>
+          <label>부문 검색<input id="st-q" placeholder="이름 또는 코드"></label>
+        </div></div>
+        <div id="st-bars" class="bars" aria-label="부문별 지표 막대그래프"></div>
+        <div class="table-tools"><button type="button" class="ghost" data-csv="st-table">CSV 다운로드</button><span class="muted">열 제목을 누르면 정렬됩니다.</span></div>
+        <div class="scroll tall"><table id="st-table"></table></div>
+      </div>
+    </section>
+
+    <!-- ============ ④ 투입·배분구조 ============ -->
+    <section class="panel tab" id="tab-linkage" role="tabpanel" hidden>
+      <div class="panel-head"><div>
+        <p class="eyebrow">구조 분석 · 04</p>
+        <h2>투입구조(열)와 배분구조(행)</h2>
+        <p class="panel-desc">선택한 부문이 생산을 위해 무엇을 얼마나 사들였는지(투입구조), 그 상품이 어느 부문과 최종수요로 팔렸는지(배분구조)를 봅니다.</p>
+      </div><span class="formula">a<sub>ij</sub> = z<sub>ij</sub> ÷ x<sub>j</sub></span></div>
+      <div class="empty-state">
+        <svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="9" fill="var(--data)"/><path d="M8 14l16 12M8 32h14M8 50l16-12M40 26l16-12M42 32h14M40 38l16 12" stroke="var(--muted)" stroke-width="2"/></svg>
+        <div><p><b>한 산업의 앞뒤 연결고리를 봅니다.</b> 예: 컴퓨터·전자 및 광학기기는 생산액의 34.7%를 같은 부문 제품(부품)으로 투입합니다.</p>
+          <button type="button" class="ghost quick-load" data-level="large">통합대분류 불러오기</button></div>
+      </div>
+      <div class="needs-data">
+        <div class="controls"><div class="grid2">
+          <label>부문 검색<input id="lk-q" placeholder="이름 또는 코드"></label>
+          <label>부문<select id="lk-sector"></select></label>
+        </div></div>
+        <div id="lk-cards" class="cards"></div>
+        <div class="grid2 cols">
+          <div><h3>주요 투입 상품 <small>상위 15 · 백만원, 투입계수</small></h3><div class="scroll"><table id="lk-in"></table></div>
+            <h3>부가가치 구성</h3><div class="scroll"><table id="lk-va"></table></div></div>
+          <div><h3>주요 판매처 <small>중간수요 상위 15 · 총수요 대비 %</small></h3><div class="scroll"><table id="lk-out"></table></div>
+            <h3>최종수요 항목별 판매</h3><div class="scroll"><table id="lk-fd"></table></div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ ⑤ 유발계수·연관도 ============ -->
+    <section class="panel tab" id="tab-mult" role="tabpanel" hidden>
+      <div class="panel-head"><div>
+        <p class="eyebrow">구조 분석 · 05</p>
+        <h2>유발계수와 영향력·감응도계수</h2>
+        <p class="panel-desc">생산유발계수는 L의 열합, 부가가치유발계수는 v̂L의 열합, 수입유발계수는 A<sup>m</sup>L의 열합입니다. 영향력계수(후방연쇄)와 감응도계수(전방연쇄)로 산업을 네 유형으로 나눕니다.</p>
+      </div><span class="formula">L = (I − A<sup>d</sup>)<sup>−1</sup></span></div>
+      <div class="empty-state">
+        <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M32 6v52M6 32h52" stroke="var(--muted)" stroke-dasharray="3 3"/><circle cx="44" cy="18" r="6" fill="var(--data)"/><circle cx="20" cy="22" r="4" fill="var(--data-soft)"/><circle cx="18" cy="44" r="5" fill="var(--data-soft)"/><circle cx="46" cy="44" r="4" fill="var(--data)"/></svg>
+        <div><p><b>영향력계수 × 감응도계수 4분면 산점도</b>와 생산·부가가치·수입·취업·고용 유발계수 표가 여기에 나옵니다.</p>
+          <button type="button" class="ghost quick-load" data-level="large">통합대분류 불러오기</button></div>
+      </div>
+      <div class="needs-data">
+        <p id="mu-emp-note" class="unit-note"></p>
+        <div class="grid2 cols">
+          <figure class="chart">
+            <figcaption>영향력계수(가로) × 감응도계수(세로) · 기준선 1.0 · 점 크기는 총산출</figcaption>
+            <div id="mu-scatter"></div>
+            <p class="muted small">점에 마우스를 올리면 부문명이 보입니다. 표 검색어와 일치하는 부문은 주황색으로 표시됩니다.</p>
+          </figure>
+          <div>
+            <label>부문 검색(표·그래프 강조)<input id="mu-q" placeholder="이름 또는 코드"></label>
+            <div id="mu-quad" class="quad-summary"></div>
+          </div>
+        </div>
+        <div class="table-tools"><button type="button" class="ghost" data-csv="mu-table">CSV 다운로드</button><span class="muted">열 제목을 누르면 정렬됩니다.</span></div>
+        <div class="scroll tall"><table id="mu-table"></table></div>
+      </div>
+    </section>
+
+    <!-- ============ ⑥ 최종수요 항목별 ============ -->
+    <section class="panel tab" id="tab-fd" role="tabpanel" hidden>
+      <div class="panel-head"><div>
+        <p class="eyebrow">구조 분석 · 06</p>
+        <h2>최종수요 항목별 유발효과</h2>
+        <p class="panel-desc">생산·부가가치 유발계수는 유발액 ÷ 국산 최종수요, 수입유발계수는 (A<sup>m</sup>LY<sup>d</sup> + Y<sup>m</sup>) ÷ 국산+수입 최종수요입니다. 의존도는 전체 유발액 중 항목의 비중(%)이며, 한국은행 통계표 15와 같은 산식입니다.</p>
+      </div><span class="formula">LY<sup>d</sup> ÷ Y<sup>d</sup></span></div>
+      <div class="empty-state">
+        <svg viewBox="0 0 64 64" aria-hidden="true"><rect x="8" y="14" width="48" height="10" rx="3" fill="var(--data)"/><rect x="8" y="28" width="34" height="10" rx="3" fill="var(--data-soft)"/><rect x="8" y="42" width="40" height="10" rx="3" fill="var(--data-soft)"/></svg>
+        <div><p><b>소비·투자·수출이 각각 생산과 부가가치, 수입, 일자리를 얼마나 만드는지</b> 비교합니다.</p>
+          <button type="button" class="ghost quick-load" data-level="large">통합대분류 불러오기</button></div>
+      </div>
+      <div class="needs-data">
+        <div class="scroll"><table id="fd-table"></table></div>
+        <h3>항목별 부문 유발액</h3>
+        <div class="controls"><label>최종수요 항목<select id="fd-item"></select></label></div>
+        <div id="fd-bars" class="bars"></div>
+        <div class="table-tools"><button type="button" class="ghost" data-csv="fd-sector">CSV 다운로드</button></div>
+        <div class="scroll tall"><table id="fd-sector"></table></div>
+      </div>
+    </section>
+
+    <!-- ============ ⑦ 수요충격 시뮬레이터 ============ -->
+    <section class="panel tab" id="tab-sim" role="tabpanel" hidden>
+      <div class="panel-head"><div>
+        <p class="eyebrow">파급효과 분석 · 07</p>
+        <h2>최종수요 변화(수요충격) 시뮬레이터</h2>
+        <p class="panel-desc">여러 부문의 증가·감소(음수)를 함께 입력할 수 있습니다. 결과의 부가가치유발액 + 수입유발액 = 입력한 최종수요 변화액이 되는지 자동으로 검산합니다.</p>
+      </div><span class="formula">Δx = (I − A<sup>d</sup>)<sup>−1</sup>Δf<sup>d</sup></span></div>
+      <div class="empty-state">
+        <svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="5" fill="var(--hilite)"/><circle cx="32" cy="32" r="13" fill="none" stroke="var(--data)" stroke-width="2"/><circle cx="32" cy="32" r="22" fill="none" stroke="var(--data-soft)" stroke-width="2"/></svg>
+        <div><p><b>예: 반도체 수출이 1조원 줄면?</b> 통합대분류 기준으로 생산 1조 7,181억원, 부가가치 5,716억원, 일자리 3,622명이 줄어드는 것으로 계산됩니다.</p>
+          <button type="button" class="ghost quick-load" data-level="large">통합대분류 불러오기</button></div>
+      </div>
+      <div class="needs-data">
+        <div class="controls">
+          <form id="sim-form" class="sim-form">
+            <label>부문 검색<input id="sim-q" placeholder="이름 또는 코드"></label>
+            <label>부문<select id="sim-sector" required></select></label>
+            <label>변화액 (백만원)<input id="sim-amount" type="number" step="any" value="1000" required></label>
+            <button type="submit">시나리오에 추가</button>
+          </form>
+          <p class="muted small" style="margin:0 0 6px">1,000백만원 = 10억원, 1,000,000백만원 = 1조원. 감소는 음수로 입력합니다.</p>
+        </div>
+        <fieldset class="radio">
+          <legend>입력한 금액의 성격</legend>
+          <label><input type="radio" name="sim-mode" value="domestic" checked> 국산품 최종수요 변화 (수입 완제품 제외)</label>
+          <label><input type="radio" name="sim-mode" value="total"> 국산+수입 최종수요 변화 — 부문별 최종수요 자급률로 국산분만 파급</label>
+        </fieldset>
+        <ul id="sim-basket" class="basket"></ul>
+        <div class="row">
+          <button type="button" id="sim-run">파급효과 계산</button>
+          <button type="button" class="ghost" id="sim-clear">시나리오 비우기</button>
+          <button type="button" class="ghost" id="sim-example">예시: 반도체 수출 1조원 감소</button>
+        </div>
+        <p id="sim-status" role="status" class="status">시나리오를 추가하세요.</p>
+        <div id="sim-result" hidden>
+          <div id="sim-cards" class="cards"></div>
+          <p id="sim-note" class="unit-note"></p>
+          <h3>생산유발액 상위 15개 부문 <small>백만원 · 진한 부분 = 직접효과</small></h3>
+          <div id="sim-bars" class="bars"></div>
+          <div class="table-tools"><button type="button" class="ghost" data-csv="sim-table">전체 부문 CSV 다운로드</button></div>
+          <div class="scroll tall"><table id="sim-table"></table></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ ⑧ 가격파급효과 ============ -->
+    <section class="panel tab" id="tab-price" role="tabpanel" hidden>
+      <div class="panel-head"><div>
+        <p class="eyebrow">파급효과 분석 · 08</p>
+        <h2>가격파급효과 (레온티에프 가격모형)</h2>
+        <p class="panel-desc">비용 상승이 생산자가격에 100% 전가되고 수요·투입구조는 변하지 않는다고 가정한 <b>최대 파급효과</b>입니다.</p>
+      </div><span class="formula">p′ = p′A<sup>d</sup> + p<sub>m</sub>′A<sup>m</sup> + v′</span></div>
+      <div class="empty-state">
+        <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M8 50 22 38l10 6 22-26" fill="none" stroke="var(--neg)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M46 18h8v8" fill="none" stroke="var(--neg)" stroke-width="3" stroke-linecap="round"/></svg>
+        <div><p><b>예: 원유 수입가격이 10% 오르면?</b> 기본부문 기준으로 나프타 7.5%, 경유 6.7%가 오르고 소비자물가는 약 0.21% 오릅니다.</p>
+          <button type="button" class="ghost quick-load" data-level="large">통합대분류 불러오기</button></div>
+      </div>
+      <div class="needs-data">
+        <div class="controls">
+          <div class="grid3">
+            <label>충격 유형<select id="pr-mode">
+              <option value="import">수입품 가격 상승 (예: 원유)</option>
+              <option value="domestic">국산품 가격 외생 상승 (예: 전력)</option>
+              <option value="va">부가가치 항목 상승 (예: 임금)</option>
+            </select></label>
+            <label id="pr-sector-wrap">부문<select id="pr-sector"></select></label>
+            <label id="pr-item-wrap" hidden>부가가치 항목<select id="pr-item">
+              <option value="9610">피용자보수(임금)</option><option value="9621">영업잉여</option>
+              <option value="9622">고정자본소모</option><option value="9630">생산세(보조금공제)</option><option value="all">부가가치 전체</option>
+            </select></label>
+            <label>상승률 (%)<input id="pr-rate" type="number" step="any" value="10"></label>
+          </div>
+          <label id="pr-q-wrap">부문 검색<input id="pr-q" placeholder="이름 또는 코드 (예: 원유, 화력, 전력)"></label>
+        </div>
+        <div class="row"><button type="button" id="pr-run">가격파급 계산</button></div>
+        <p id="pr-status" role="status" class="status">충격 유형과 상승률을 고른 뒤 계산하세요.</p>
+        <div id="pr-result" hidden>
+          <div id="pr-cards" class="cards"></div>
+          <h3>가격 상승률 상위 20개 부문 <small>%</small></h3>
+          <div id="pr-bars" class="bars"></div>
+          <div class="table-tools"><button type="button" class="ghost" data-csv="pr-table">CSV 다운로드</button></div>
+          <div class="scroll tall"><table id="pr-table"></table></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ ⑨ 분류수준 비교 ============ -->
+    <section class="panel tab" id="tab-compare" role="tabpanel" hidden>
+      <div class="panel-head"><div>
+        <p class="eyebrow">파급효과 분석 · 09</p>
+        <h2>분류수준 비교 — 같은 산업, 다른 집계</h2>
+        <p class="panel-desc">기본부문 하나를 고르면 그 부문이 속한 소·중·대분류의 계수와 <b>같은 금액의 수요충격</b>을 각 분류표로 계산한 결과를 나란히 놓습니다. 상위 분류일수록 투입구조가 다른 부문이 섞여 결과가 달라지는 <b>집계 편의</b>를 확인할 수 있습니다.</p>
+      </div></div>
+      <div class="empty-state">
+        <svg viewBox="0 0 64 64" aria-hidden="true"><rect x="6" y="40" width="10" height="16" rx="2" fill="var(--data-soft)"/><rect x="20" y="34" width="10" height="22" rx="2" fill="var(--data-soft)"/><rect x="34" y="32" width="10" height="24" rx="2" fill="var(--data-soft)"/><rect x="48" y="18" width="10" height="38" rx="2" fill="var(--data)"/></svg>
+        <div><p><b>예: 집적회로 1조원 수요 증가</b>는 기본부문 표로 1조 5,084억원, 대분류(컴퓨터·전자 및 광학기기) 표로 1조 7,181억원의 생산을 유발해 13.9% 차이가 납니다. 두 개 이상의 분류를 불러오면 비교할 수 있습니다.</p>
+          <button type="button" class="ghost quick-load" data-level="all">4개 분류 모두 불러오기</button></div>
+      </div>
+      <div class="needs-data">
+        <div class="controls"><div class="grid3">
+          <label>기본부문 검색<input id="cp-q" placeholder="예: 집적회로, 승용차, 화력"></label>
+          <label>기본부문<select id="cp-sector"></select></label>
+          <label>수요충격 (백만원)<input id="cp-amount" type="number" step="any" value="1000000"></label>
+        </div></div>
+        <div class="row"><button type="button" id="cp-run">비교 계산</button></div>
+        <p id="cp-status" role="status" class="status">기본부문을 고르고 「비교 계산」을 누르세요.</p>
+        <div id="cp-path" class="path"></div>
+        <div class="scroll"><table id="cp-table"></table></div>
+        <p id="cp-note" class="unit-note"></p>
+      </div>
+    </section>
+
+    <!-- ============ ⑩ 검증 ============ -->
+    <section class="panel tab" id="tab-verify" role="tabpanel" hidden>
+      <div class="panel-head"><div>
+        <p class="eyebrow">검증·방법 · 10</p>
+        <h2>계산 검증</h2>
+        <p class="panel-desc">앱의 계산이 한국은행 원표와 공표 수치를 그대로 재현하는지 세 단계로 확인합니다.</p>
+      </div></div>
+      <div class="empty-state">
+        <svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="24" fill="var(--good-soft)"/><path d="M20 33l8 8 16-18" fill="none" stroke="var(--good)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <div><p><b>검증 결과 요약</b>: 원표 계수 재현 오차 10<sup>−14</sup> 이하, 분류 간 합계 차이 0, 보도자료·통계표 381개 중 378개 일치. 자료를 불러오면 직접 확인할 수 있습니다.</p>
+          <button type="button" class="ghost quick-load" data-level="large">통합대분류 불러오기</button></div>
+      </div>
+      <div class="needs-data">
+        <h3>1) 원표 대조 <small>불러온 각 분류표</small></h3>
+        <p class="muted small">거래표 항등식(백만원 단위 오차)과, 앱이 거래표에서 다시 계산한 계수가 원표 계수 시트와 얼마나 다른지(최대 절대오차)를 보여줍니다.</p>
+        <div id="vf-levels"></div>
+        <h3>2) 분류 간 정합성 <small>부문분류표로 하위 분류 합산 = 상위 분류 공식표?</small></h3>
+        <div class="row"><button type="button" id="vf-cons">정합성 검사</button></div>
+        <div class="scroll"><table id="vf-cons-table"></table></div>
+        <h3>3) 한국은행 보도자료·통계표 수치 재현 <small>통합대분류 필요</small></h3>
+        <p class="muted small">보도자료 본문 수치와 별첨 통계표 11~15·18~20의 2023년 값을 대조합니다. 전산업은 1부문, 농림수산품·공산품 등은 7부문, 소비재제품·생산자서비스 등은 13부문으로 통합한 표에서 계산합니다(통계표 각주 방식).</p>
+        <div class="row"><button type="button" id="vf-press">재현 검증 실행</button><label class="inline"><input type="checkbox" id="vf-only-fail"> 불일치만 보기</label></div>
+        <p id="vf-press-summary" class="status">「재현 검증 실행」을 누르세요.</p>
+        <div class="scroll tall"><table id="vf-press-table"></table></div>
+      </div>
+    </section>
+
+    <!-- ============ ⑪ 방법·단위 ============ -->
+    <section class="panel tab" id="tab-method" role="tabpanel" hidden>
+      <div class="panel-head"><div>
+        <p class="eyebrow">검증·방법 · 11</p>
+        <h2>분석 방법과 단위</h2>
+      </div></div>
+      <div class="method">
+        <h3>자료</h3>
+        <ul>
+          <li>한국은행, 「2023년 산업연관표(연장표)」(2025.9.24 공표) — 투입산출표(생산자가격) 통합대·중·소분류, 기본부문. 2020년 실측표를 기준년표로 간접 추계한 연장표이며, 금액은 <strong>당해년(2023년) 가격, 백만원</strong>입니다.</li>
+          <li>「2020 기준년 상품분류(투입산출표)」 부문분류표, 보도자료 별첨 통계표 20종(2020~2023), 보도자료 원문(<a href="./docs/2023-io-press-release.pdf">PDF</a>, <a href="./docs/2023-io-press-release.hwp">HWP</a>).</li>
+          <li>출처: 한국은행 경제통계시스템(ECOS) 2.2 산업연관표 &gt; 2.2.1 2020년 실측표 기준 &gt; 2023 연장표. 산업 단위 집계 통계로 개인정보는 없습니다.</li>
+        </ul>
+        <h3>단위</h3>
+        <div class="scroll"><table class="plain">
+          <thead><tr><th>항목</th><th>단위</th><th>비고</th></tr></thead>
+          <tbody>
+            <tr><td>거래표(총·국산·수입), 산출액, 부가가치, 최종수요, 유발액</td><td>백만원</td><td>1,000백만원 = 10억원, 1,000,000백만원 = 1조원</td></tr>
+            <tr><td>투입계수(A, A<sup>d</sup>, A<sup>m</sup>)</td><td>무단위 계수</td><td>투입액 ÷ 해당 부문 총투입액</td></tr>
+            <tr><td>생산·부가가치·수입유발계수</td><td>무단위 계수(배)</td><td>최종수요 1단위(1원)당 유발액</td></tr>
+            <tr><td>영향력계수·감응도계수</td><td>상대지수</td><td>전산업 평균 = 1</td></tr>
+            <tr><td>중간투입률·부가가치율·국산화율·수입의존도·수출률·수입률</td><td>%</td><td>아래 정의 참조</td></tr>
+            <tr><td>취업자·임금근로자 수</td><td>명(통계표 원자료는 천명)</td><td>전업환산(FTE) 기준</td></tr>
+            <tr><td>취업·고용계수, 취업·고용유발계수 / 시뮬레이터의 취업유발</td><td>명/10억원 / 명</td><td>시뮬레이터는 입력액(백만원)에 대한 인원</td></tr>
+            <tr><td>가격파급효과</td><td>% (가격 상승률)</td><td>생산자가격 기준</td></tr>
+          </tbody>
+        </table></div>
+        <h3>지표 정의 <small>한국은행 「주요 용어 해설」</small></h3>
+        <ul class="defs">
+          <li>총공급 = 총산출(국내공급) + 수입(해외공급) · 총수요 = 중간수요 + 최종수요(소비+투자+수출)</li>
+          <li>중간투입률 = 중간재 투입액 ÷ 총투입 · 부가가치율 = 부가가치 ÷ 총투입</li>
+          <li>국산화율 = 국산 중간재 투입액 ÷ 중간재 투입액 · 수입의존도(수입 중간투입률) = 수입 중간재 투입액 ÷ 총투입</li>
+          <li>수출률 = 수출액 ÷ 총산출 · 수입률 = 수입액(수입계) ÷ 총공급 · 중간수요율 = 중간수요 ÷ 총수요</li>
+          <li>취업(고용)계수 = 총산출 10억원 생산에 소요되는 취업자(임금근로자) 수</li>
+        </ul>
+        <h3>모형</h3>
+        <ul class="defs">
+          <li>국산투입계수 a<sup>d</sup><sub>ij</sub> = z<sup>d</sup><sub>ij</sub>/x<sub>j</sub>, 수입투입계수 a<sup>m</sup><sub>ij</sub> = z<sup>m</sup><sub>ij</sub>/x<sub>j</sub> (산출액 0인 부문의 계수는 0)</li>
+          <li>생산유발계수 L = (I − A<sup>d</sup>)<sup>−1</sup> (비경쟁수입형) · 수입유발계수 = A<sup>m</sup>L · 부가가치유발계수 = v̂L</li>
+          <li>영향력계수 = L의 열합 ÷ 열합 평균 · 감응도계수 = L의 행합 ÷ 행합 평균</li>
+          <li>최종수요 항목별: 생산유발액 = LY<sup>d</sup>, 부가가치유발액 = v̂LY<sup>d</sup>, 수입유발액 = A<sup>m</sup>LY<sup>d</sup> + Y<sup>m</sup></li>
+          <li>취업(고용)유발 = êLΔf<sup>d</sup>. 통계표 16·17의 2023년 대분류별 취업자·임금근로자 수로 계산하므로 <strong>통합대분류에서 정확</strong>하고, 하위 분류에서는 소속 대분류의 취업계수를 같게 적용한 <strong>근사치</strong>입니다.</li>
+          <li>가격모형: 수입품 k 가격 r 상승 → Δp′ = r·A<sup>m</sup><sub>k·</sub>L; 국산품 k 가격 r 외생 상승 → Δp<sub>o</sub>′ = r·A<sup>d</sup><sub>k,o</sub>(I − A<sup>d</sup><sub>oo</sub>)<sup>−1</sup>; 부가가치 항목 r 상승 → Δp′ = r·v<sub>item</sub>′L. 소비자물가 영향은 민간소비지출(국산·수입) 구성비 가중평균.</li>
+        </ul>
+        <h3>해석상 유의점</h3>
+        <ul>
+          <li>산업연관모형은 고정 투입계수·규모수익불변·공급제약 없음·가격 불변을 가정하므로 결과는 <strong>잠재적 파급효과의 상한</strong>에 가깝습니다.</li>
+          <li>연장표(2023)는 실측표가 아닌 간접 추계표이며 당해년 가격 기준이므로, 연도 간 비교 때 가격 변동을 고려해야 합니다.</li>
+          <li>한국은행은 반올림 때문에 상위 부문 숫자가 하위 부문 합계와 다를 수 있다고 안내하지만, 이 앱이 검사한 2023년 투입산출표는 모든 분류 간 합계가 정확히 일치했습니다(10 계산 검증).</li>
+        </ul>
+      </div>
+    </section>
+  </main>
+</div>
+<div id="tooltip" class="tooltip" role="tooltip" hidden></div>
+<footer class="site-footer"><div class="wrap"><span>자료: 한국은행 「2023년 산업연관표(연장표)」 · 2020 기준년 상품분류 · 별첨 통계표</span><span>계산: 방문자 브라우저의 Python(Pyodide) · GitHub Pages 정적 웹사이트</span></div></footer>
+</body>
+</html>
