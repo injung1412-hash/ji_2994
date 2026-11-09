@@ -299,16 +299,22 @@ body:not(.has-data) .needs-data{display:none}
 .formula sup,.formula sub{font-style:normal;font-size:.68em}
 
 /* ---------------- 핵심 요약 상자 ---------------- */
-.insight{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--accent-2);border-radius:var(--r-m);padding:14px 18px 12px;margin:2px 0 18px}
-.insight-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:6px}
-.insight-title{font-family:var(--font-display);font-weight:600;font-size:1rem;color:var(--ink)}
-.insight-title::before{content:"요약";display:inline-block;font:600 .66rem var(--font-body);letter-spacing:.04em;color:var(--accent-2);background:var(--accent-soft);padding:2px 7px;border-radius:999px;margin-right:8px;vertical-align:2px}
-.insight-sub{font-size:.76rem;color:var(--muted)}
-.insight ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:3px}
-.insight li{color:var(--ink-2);font-size:.9rem;line-height:1.6}
-.insight li::marker{color:var(--accent-2)}
-.insight b{color:var(--ink);font-weight:600}
-.insight-lg{padding:18px 22px 16px}
-.insight-lg .insight-title{font-size:1.12rem}
-.insight-lg ul{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 28px}
-@media (max-width:860px){.insight-lg ul{grid-template-columns:1fr}}
+.insight{background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent-2) 28%,transparent);border-radius:var(--r-l);padding:16px 18px 18px;margin:2px 0 20px}
+.insight-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.insight-title{display:inline-flex;align-items:center;gap:9px;font-family:var(--font-display);font-weight:600;font-size:1.05rem;color:var(--ink)}
+.insight-title::before{content:"요약";font:600 .7rem var(--font-body);letter-spacing:.04em;color:var(--accent-ink);background:var(--accent-2);padding:3px 9px;border-radius:999px}
+.insight-sub{font-size:.76rem;color:var(--ink-2)}
+.ins-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}
+.ins-card{display:flex;flex-direction:column;gap:4px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-m);padding:13px 15px 12px;min-width:0;box-shadow:0 1px 2px rgba(15,27,45,.04)}
+.ins-k{font-size:.74rem;font-weight:600;color:var(--accent-2);letter-spacing:.01em}
+.ins-v{font-size:1.08rem;font-weight:700;color:var(--ink);line-height:1.35;overflow-wrap:anywhere}
+.ins-t{font-size:.8rem;color:var(--ink-2);line-height:1.5}
+.ins-t b{color:var(--ink);font-weight:600}
+.ins-card.down .ins-v{color:var(--neg)}
+.ins-card.up .ins-v{color:var(--accent-2)}
+.insight-lg{padding:20px 22px 22px}
+.insight-lg .insight-title{font-size:1.2rem}
+.insight-lg .ins-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+@media (max-width:1180px){.insight-lg .ins-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:560px){.insight-lg .ins-grid,.ins-grid{grid-template-columns:1fr}}
+.insight-lg .ins-v{font-size:1.16rem}

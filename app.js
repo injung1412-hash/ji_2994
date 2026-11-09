@@ -810,33 +810,37 @@ function drawPress() {
 }
 
 /* ================= 핵심 요약 상자 ================= */
-// items: 문장 배열. 각 문장은 문자열과 { b: '강조' } 조각의 배열
-function insight(id, title, items, sub) {
+// cards: [{ k: '항목 이름', v: '핵심값', t: 설명(문자열 또는 [문자열|{b}] 배열) }]
+function insight(id, title, cards, sub) {
   const box = $(id); if (!box) return;
-  const li = items.filter(Boolean).map((parts) => el('li', null, ...parts.map((p) => (typeof p === 'string' ? p : el('b', { text: p.b })))));
+  const part = (p) => (typeof p === 'string' ? p : el('b', { text: p.b }));
+  const items = cards.filter(Boolean).map((c) => el('div', { class: 'ins-card' + (c.tone ? ' ' + c.tone : '') },
+    el('span', { class: 'ins-k', text: c.k }),
+    el('span', { class: 'ins-v', text: c.v }),
+    c.t ? el('span', { class: 'ins-t' }, ...[].concat(c.t).filter((x) => x !== '' && x != null).map(part)) : null));
   box.replaceChildren(el('div', { class: 'insight-head' }, el('span', { class: 'insight-title', text: title }), sub ? el('span', { class: 'insight-sub', text: sub }) : null),
-    el('ul', null, li));
+    el('div', { class: 'ins-grid' }, items));
   box.hidden = false;
 }
 const jo = (v) => fmt(v / 1e6, 1) + '조원';
 const pc = (v, d = 1) => fmt(v, d) + '%';
-const MIN_SHARE = 0.1; // 비율 지표의 극값은 산출 비중 0.1% 이상 부문 중에서 고름(아주 작은 부문의 이상값 배제)
+const MIN_SHARE = 0.1; // 극값은 산출 비중 0.1% 이상 부문 중에서 고름(아주 작은 부문의 이상값 배제)
 const big = (rows) => rows.filter((r) => (r.output_share ?? 100) >= MIN_SHARE && r.output > 0);
 const topBy = (rows, k, n = 1, asc = false) => rows.filter((r) => r[k] != null).sort((a, b) => (asc ? a[k] - b[k] : b[k] - a[k])).slice(0, n);
 const nm = (r) => r.name;
-// 받침에 맞는 조사(이/가, 은/는, 을/를, 과/와)
+// 받침에 맞는 조사(이/가 등)
 function josa(word, withBatchim, without) {
   const c = String(word).trim().slice(-1).charCodeAt(0);
   if (c >= 0xac00 && c <= 0xd7a3) return word + ((c - 0xac00) % 28 ? withBatchim : without);
   return word + withBatchim + '(' + without + ')';
 }
-// 유발계수 극값도 산출 비중 MIN_SHARE% 이상 부문 중에서 고름
 function bigM(rows) {
   const live = rows.filter((r) => !r.zero && r.output > 0);
   const tot = live.reduce((a, r) => a + r.output, 0);
   return live.filter((r) => r.output / tot * 100 >= MIN_SHARE);
 }
 const QUADS = ['Ⅰ 전·후방 모두 높음', 'Ⅱ 전방연쇄형(감응도↑)', 'Ⅲ 독립형(모두 낮음)', 'Ⅳ 후방연쇄형(영향력↑)'];
+const K = (v) => korMoney(Math.abs(v)).replace('≈ ', '');
 
 async function renderLevelSummary() {
   const key = state.active; if (!key) return;
@@ -845,7 +849,7 @@ async function renderLevelSummary() {
       getCached('fd', 'fd_effects', [key, '최종수요계'])]);
     if (key !== state.active) return;
     const m = Object.fromEntries(st.macro.map((x) => [x.name, x.value]));
-    const rows = st.rows; const n = rows.length;
+    const rows = st.rows;
     const byOut = topBy(rows, 'output', 3);
     const share3 = byOut.reduce((a, r) => a + r.output_share, 0);
     const mrows = mu.rows.filter((r) => !r.zero);
@@ -855,20 +859,26 @@ async function renderLevelSummary() {
     const impMax = topBy(big(rows), 'imp_dep')[0]; const expMax = topBy(big(rows), 'export_rate')[0];
     const items = fd.items.filter((i) => ['소비', '투자', '수출'].includes(i.name));
     const byProd = items.slice().sort((a, b) => b.prod_coef - a.prod_coef);
-    const lines = [
-      [{ b: n + '개 부문' }, ' · 총산출 ', { b: jo(m['총산출'] * 1e6) }, ' · 부가가치 ', { b: jo(m['부가가치'] * 1e6) }, ' (부가가치율 ', { b: pc(m['부가가치율']) }, ', 중간투입률 ', pc(m['중간투입률']), ')'],
-      ['산출 1위는 ', { b: byOut[0].name }, '(전체의 ' + pc(byOut[0].output_share) + '), 상위 3개 부문(' + byOut.map(nm).join(', ') + ')이 ', { b: pc(share3) }, '를 차지'],
-      ['생산유발계수 최고는 ', { b: pMax.name + ' ' + fmt(pMax.prod, 3) + '배' }, '(부문 평균 ' + fmt(meanProd, 3) + '배). 전·후방 연쇄가 모두 큰 Ⅰ유형은 ', { b: q1.length + '개' },
-        q1.length ? ' — ' + q1.slice(0, 3).map(nm).join(', ') + (q1.length > 3 ? ' 등' : '') : ''],
-      ['수입의존도 최고 ', { b: impMax.name + ' ' + pc(impMax.imp_dep) }, ', 수출률 최고 ', { b: expMax.name + ' ' + pc(expMax.export_rate) }],
-      ['최종수요 1단위당 생산유발은 ', { b: byProd.map((i) => i.name + ' ' + fmt(i.prod_coef, 3)).join(' > ') },
-        fd.employment ? ' · 10억원당 일자리는 ' + items.slice().sort((a, b) => b.emp_coef - a.emp_coef).map((i) => i.name + ' ' + fmt(i.emp_coef, 1) + '명').join(' > ') : ''],
+    const cards = [
+      { k: '경제 규모', v: '총산출 ' + fmt(m['총산출'], 1) + '조원', t: [rows.length + '개 부문 · 부가가치 ', { b: fmt(m['부가가치'], 1) + '조원' }, ' · 부가가치율 ' + pc(m['부가가치율'])] },
+      { k: '산출 1위 산업', v: byOut[0].name, t: ['전체 산출의 ', { b: pc(byOut[0].output_share) }, ' · 상위 3개(' + byOut.slice(1).map(nm).join(', ') + ' 포함) ', { b: pc(share3) }] },
+      { k: '생산유발계수 1위', v: pMax.name + ' ' + fmt(pMax.prod, 3) + '배', t: ['최종수요 1원당 생산유발 · 부문 평균 ', { b: fmt(meanProd, 3) + '배' }] },
+      { k: '핵심 연관산업 (Ⅰ유형)', v: q1.length + '개 부문', t: ['전·후방 연쇄가 모두 큼 · ', { b: q1.slice(0, 3).map(nm).join(', ') }, q1.length > 3 ? ' 등' : ''] },
+      { k: '수입의존도 1위', v: impMax.name + ' ' + pc(impMax.imp_dep), t: ['수입 중간재 ÷ 총투입 · 전산업 ', { b: pc(m['수입의존도(수입 중간투입률)']) }] },
+      { k: '수출률 1위', v: expMax.name + ' ' + pc(expMax.export_rate), t: ['수출액 ÷ 총산출 · 전산업 ', { b: pc(m['수출률']) }] },
+      { k: '최종수요별 생산유발', v: byProd[0].name + ' ' + fmt(byProd[0].prod_coef, 3), t: ['생산유발계수 ', { b: byProd.map((i) => i.name + ' ' + fmt(i.prod_coef, 3)).join(' > ') }] },
     ];
-    if (mu.employment) {
+    if (fd.employment) {
+      const byEmp = items.slice().sort((a, b) => b.emp_coef - a.emp_coef);
       const eMax = topBy(bigM(mrows), 'emp')[0];
-      lines.push(['취업유발계수 최고 ', { b: eMax.name + ' ' + fmt(eMax.emp, 1) + '명/10억원' }, mu.employment_exact ? '' : ' (소속 대분류 취업계수를 적용한 근사치)']);
+      cards.push({ k: '일자리 창출', v: byEmp[0].name + ' ' + fmt(byEmp[0].emp_coef, 1) + '명', t: ['10억원당 취업유발 ', { b: byEmp.map((i) => i.name + ' ' + fmt(i.emp_coef, 1)).join(' > ') },
+        ' · 부문 1위 ' + eMax.name + ' ' + fmt(eMax.emp, 1) + '명' + (mu.employment_exact ? '' : '(근사치)')] });
     }
-    insight('lv-insight', LEVEL_LABEL[key] + ' 핵심 요약', lines, '2023년 · 극값은 산출 비중 ' + MIN_SHARE + '% 이상 부문 중');
+    if (!fd.employment) {
+      const vaMax = topBy(big(rows), 'va_rate')[0];
+      cards.push({ k: '부가가치율 1위', v: vaMax.name + ' ' + pc(vaMax.va_rate), t: ['부가가치 ÷ 총투입 · 전산업 ', { b: pc(m['부가가치율']) }] });
+    }
+    insight('lv-insight', LEVEL_LABEL[key] + ' 핵심 요약', cards, '2023년 · 극값은 산출 비중 ' + MIN_SHARE + '% 이상 부문 중');
   } catch (e) { /* 요약 실패는 분석에 영향 없음 */ }
 }
 
@@ -878,10 +888,10 @@ function structureInsight(d) {
   const intMax = topBy(b, 'int_rate')[0], domMin = topBy(b.filter((r) => r.int_in > 0), 'dom_rate', 1, true)[0];
   const exp3 = topBy(b, 'export_rate', 3);
   insight('st-insight', '핵심 요약', [
-    ['부가가치율 최고 ', { b: vaMax.name + ' ' + pc(vaMax.va_rate) }, ', 최저 ', { b: vaMin.name + ' ' + pc(vaMin.va_rate) }],
-    ['중간투입률이 가장 높은 부문은 ', { b: intMax.name + ' ' + pc(intMax.int_rate) }, ' — 생산액 대부분이 원재료·서비스 구입비'],
-    ['국산화율이 가장 낮은 부문은 ', { b: domMin.name + ' ' + pc(domMin.dom_rate) }, ' — 중간재를 수입에 가장 많이 의존'],
-    ['수출률 상위: ', { b: exp3.map((r) => r.name + ' ' + pc(r.export_rate)).join(', ') }],
+    { k: '부가가치율 1위', v: vaMax.name + ' ' + pc(vaMax.va_rate), t: ['최저는 ', { b: vaMin.name + ' ' + pc(vaMin.va_rate) }] },
+    { k: '중간투입률 1위', v: intMax.name + ' ' + pc(intMax.int_rate), t: '생산액 대부분이 원재료·서비스 구입비' },
+    { k: '국산화율 최저', v: domMin.name + ' ' + pc(domMin.dom_rate), t: '중간재를 수입에 가장 많이 의존' },
+    { k: '수출률 1위', v: exp3[0].name + ' ' + pc(exp3[0].export_rate), t: ['2·3위 ', { b: exp3.slice(1).map((r) => r.name + ' ' + pc(r.export_rate)).join(', ') }] },
   ], LEVEL_LABEL[state.active] + ' · 산출 비중 ' + MIN_SHARE + '% 이상 부문 중');
 }
 
@@ -896,10 +906,10 @@ async function linkageInsight(d) {
   const fdTop = d.fd.slice().sort((a, b) => b.total - a.total)[0];
   const quad = (mu.rows.find((r) => r.code === d.code) || {}).quadrant;
   insight('lk-insight', d.name + ' 핵심 요약', [
-    ['총산출 ', { b: jo(s.output) }, ' 중 중간투입이 ', { b: pc(s.int_rate) }, ', 부가가치가 ', { b: pc(s.va_rate) }, ' · 중간재 국산화율 ', pc(s.dom_rate)],
-    inp ? ['가장 많이 사들이는 상품은 ' + (self && self.total > inp.total ? '자기 부문 제품(투입계수 ' + fmt(self.coef, 3) + ') 다음으로 ' : ''), { b: inp.name }, '(투입계수 ' + fmt(inp.coef, 3) + ')'] : null,
-    ['생산물의 ', { b: pc(s.int_dem_rate) }, '가 다른 산업의 중간재로 쓰이며', buyer ? [' 최대 구매 부문은 ', { b: buyer.name }] : '', ' · 최종수요 중에서는 ', { b: josa(fdTop.name, '이', '가') }, ' 가장 큼'].flat(),
-    ['생산유발계수 ', { b: fmt(s.prod_mult, 3) + '배' }, '로 ' + live.length + '개 부문 중 ', { b: rank + '위' }, quad ? ' · 유형: ' + quad : ''],
+    { k: '투입 구조', v: '중간투입 ' + pc(s.int_rate), t: ['부가가치 ', { b: pc(s.va_rate) }, ' · 중간재 국산화율 ' + pc(s.dom_rate) + ' · 총산출 ' + jo(s.output)] },
+    inp ? { k: '최대 투입 상품', v: inp.name, t: ['투입계수 ', { b: fmt(inp.coef, 3) }, self && self.total > inp.total ? ' · 자기 부문 제품(' + fmt(self.coef, 3) + ') 다음' : ''] } : null,
+    { k: '최대 판매처', v: buyer ? buyer.name : '—', t: ['생산물의 ', { b: pc(s.int_dem_rate) }, '가 중간재 · 최종수요는 ' + josa(fdTop.name, '이', '가') + ' 최대'] },
+    { k: '생산유발계수', v: fmt(s.prod_mult, 3) + '배', t: [live.length + '개 부문 중 ', { b: rank + '위' }, quad ? ' · ' + quad : ''] },
   ], LEVEL_LABEL[state.active]);
 }
 
@@ -907,53 +917,56 @@ function multInsight(d) {
   const r = d.rows.filter((x) => !x.zero);
   const rb = bigM(d.rows);
   const p3 = topBy(rb, 'prod', 3), vaMax = topBy(rb, 'va')[0], impMax = topBy(rb, 'imp')[0];
-  const cnt = QUADS.map((q) => q.split(' ')[0] + ' ' + r.filter((x) => x.quadrant === q).length + '개').join(' · ');
-  const lines = [
-    ['생산유발계수 상위: ', { b: p3.map((x) => x.name + ' ' + fmt(x.prod, 3)).join(', ') }],
-    ['부가가치유발계수 최고 ', { b: vaMax.name + ' ' + fmt(vaMax.va, 3) }, ' · 수입유발계수 최고 ', { b: impMax.name + ' ' + fmt(impMax.imp, 3) }, ' (수요의 국외 유출이 가장 큼)'],
-    ['산업 유형: ', { b: cnt }],
+  const cnt = QUADS.map((q) => [q.split(' ')[0], r.filter((x) => x.quadrant === q).length]);
+  const cards = [
+    { k: '생산유발계수 1위', v: p3[0].name + ' ' + fmt(p3[0].prod, 3), t: ['2·3위 ', { b: p3.slice(1).map((x) => x.name + ' ' + fmt(x.prod, 3)).join(', ') }] },
+    { k: '부가가치유발계수 1위', v: vaMax.name + ' ' + fmt(vaMax.va, 3), t: '수요 1원 중 국내에 남는 부가가치가 가장 큼' },
+    { k: '수입유발계수 1위', v: impMax.name + ' ' + fmt(impMax.imp, 3), t: '수요의 국외 유출(수입)이 가장 큼' },
+    { k: '산업 유형', v: 'Ⅰ유형 ' + cnt[0][1] + '개', t: ['전·후방 모두 큰 핵심산업 · ', { b: cnt.slice(1).map(([q, n]) => q + ' ' + n + '개').join(' · ') }] },
   ];
   if (d.employment) {
     const e = rb.filter((x) => x.emp > 0);
     const eMax = topBy(e, 'emp')[0], eMin = topBy(e, 'emp', 1, true)[0];
-    lines.push(['취업유발계수 최고 ', { b: eMax.name + ' ' + fmt(eMax.emp, 1) + '명' }, ', 최저 ', { b: eMin.name + ' ' + fmt(eMin.emp, 1) + '명' }, ' (10억원당' + (d.employment_exact ? ')' : ', 근사치)')]);
+    cards.push({ k: '취업유발계수 1위', v: eMax.name + ' ' + fmt(eMax.emp, 1) + '명', t: ['10억원당 · 최저 ', { b: eMin.name + ' ' + fmt(eMin.emp, 1) + '명' }, d.employment_exact ? '' : ' · 근사치'] });
   }
-  insight('mu-insight', '핵심 요약', lines, LEVEL_LABEL[state.active] + ' · 계수 극값은 산출 비중 ' + MIN_SHARE + '% 이상 부문 중');
+  insight('mu-insight', '핵심 요약', cards, LEVEL_LABEL[state.active] + ' · 계수 극값은 산출 비중 ' + MIN_SHARE + '% 이상 부문 중');
 }
 
 function fdInsight(d) {
   const it = d.items.filter((i) => ['소비', '투자', '수출'].includes(i.name));
   const by = (k) => it.slice().sort((a, b) => b[k] - a[k]);
-  const lines = [
-    ['생산유발계수: ', { b: by('prod_coef').map((i) => i.name + ' ' + fmt(i.prod_coef, 3)).join(' > ') }],
-    ['부가가치유발계수는 ', { b: by('va_coef')[0].name + '(' + fmt(by('va_coef')[0].va_coef, 3) + ')' }, ', 수입유발계수는 ', { b: by('imp_coef')[0].name + '(' + fmt(by('imp_coef')[0].imp_coef, 3) + ')' }, '에서 가장 높음'],
-    ['전체 생산유발액 중 비중: ', { b: it.map((i) => i.name + ' ' + pc(i.prod_dep)).join(' · ') }],
+  const order = (k, dd) => by(k).map((i) => i.name + ' ' + fmt(i[k], dd)).join(' > ');
+  const cards = [
+    { k: '생산유발계수 1위', v: by('prod_coef')[0].name + ' ' + fmt(by('prod_coef')[0].prod_coef, 3), t: [{ b: order('prod_coef', 3) }] },
+    { k: '부가가치유발계수 1위', v: by('va_coef')[0].name + ' ' + fmt(by('va_coef')[0].va_coef, 3), t: [{ b: order('va_coef', 3) }] },
+    { k: '수입유발계수 1위', v: by('imp_coef')[0].name + ' ' + fmt(by('imp_coef')[0].imp_coef, 3), t: [{ b: order('imp_coef', 3) }] },
+    { k: '생산유발 기여 1위', v: by('prod_dep')[0].name + ' ' + pc(by('prod_dep')[0].prod_dep), t: ['전체 생산유발액 중 비중 · ', { b: it.map((i) => i.name + ' ' + pc(i.prod_dep)).join(' · ') }] },
   ];
-  if (d.employment) lines.push(['10억원당 취업유발: ', { b: by('emp_coef').map((i) => i.name + ' ' + fmt(i.emp_coef, 1) + '명').join(' > ') }, d.employment_exact ? '' : ' (근사치)']);
-  insight('fd-insight', '핵심 요약', lines, LEVEL_LABEL[state.active] + ' · 국산 최종수요 기준');
+  if (d.employment) cards.push({ k: '일자리 창출 1위', v: by('emp_coef')[0].name + ' ' + fmt(by('emp_coef')[0].emp_coef, 1) + '명', t: ['10억원당 · ', { b: order('emp_coef', 1) }, d.employment_exact ? '' : ' · 근사치'] });
+  insight('fd-insight', '핵심 요약', cards, LEVEL_LABEL[state.active] + ' · 국산 최종수요 기준');
 }
 
 function simInsight(r) {
   const t = r.totals;
   const ind = r.rows.filter((x) => !x.demand).sort((a, b) => Math.abs(b.indirect) - Math.abs(a.indirect)).slice(0, 3);
-  const dir = t.input < 0 ? '감소' : '증가';
-  const K = (v) => korMoney(Math.abs(v)).replace('≈ ', '');
-  const lines = [
-    ['최종수요 ', { b: K(t.input) + ' ' + dir }, ' → 생산 ', { b: K(t.production) + ' ' + dir }, ' (배수 ' + fmt(t.prod_multiplier, 3) + ', 이 중 간접효과 ' + K(t.indirect) + ')'],
-    ['입력액은 부가가치 ', { b: K(t.valueAdded) + '(' + pc(t.valueAdded / t.input * 100) + ')' }, ' + 수입 ', { b: K(t.imports) + '(' + pc(t.imports / t.input * 100) + ')' }, '로 모두 귀착'],
-    ind.length ? ['간접효과가 큰 부문: ', { b: ind.map((x) => x.name).join(', ') }] : null,
+  const dir = t.input < 0 ? '감소' : '증가'; const tone = t.input < 0 ? 'down' : 'up';
+  const cards = [
+    { k: '생산 유발', v: K(t.production) + ' ' + dir, tone, t: ['입력 ' + K(t.input) + ' × 배수 ', { b: fmt(t.prod_multiplier, 3) }, ' · 간접효과 ' + K(t.indirect)] },
+    { k: '부가가치 유발', v: K(t.valueAdded) + ' ' + dir, tone, t: ['입력액의 ', { b: pc(t.valueAdded / t.input * 100) }, '가 국내 소득으로'] },
+    { k: '수입 유발', v: K(t.imports) + ' ' + dir, tone, t: ['입력액의 ', { b: pc(t.imports / t.input * 100) }, ' · 부가가치 + 수입 = 입력액'] },
+    ind.length ? { k: '간접효과가 큰 부문', v: ind[0].name, t: ['다음으로 ', { b: ind.slice(1).map(nm).join(', ') }] } : null,
   ];
-  if (r.employment) lines.push(['일자리 ', { b: fmt(Math.abs(t.emp), 0) + '명 ' + dir }, ' (임금근로자 ' + fmt(Math.abs(t.wageEmp), 0) + '명' + (r.employment_exact ? ')' : ', 근사치)')]);
-  insight('sim-insight', '결과 요약', lines, r.label + ' 기준');
+  if (r.employment) cards.push({ k: '일자리', v: fmt(Math.abs(t.emp), 0) + '명 ' + dir, tone, t: ['임금근로자 ', { b: fmt(Math.abs(t.wageEmp), 0) + '명' }, r.employment_exact ? '' : ' · 근사치'] });
+  insight('sim-insight', '결과 요약', cards, r.label + ' 기준');
 }
 
 function priceInsight(r) {
   const t3 = r.rows.filter((x) => Math.abs(x.dp) > 0).slice(0, 3);
   insight('pr-insight', '결과 요약', [
-    [{ b: r.label }, ' → 소비자물가 ', { b: '+' + fmt(r.indices.consumer, 3) + '%' }, ', 생산자물가 ', { b: '+' + fmt(r.indices.producer, 3) + '%' }],
-    ['가장 크게 오르는 부문: ', { b: t3.map((x) => x.name + ' ' + fmt(x.dp, 2) + '%').join(', ') }],
-    ['비용이 100% 전가되고 수요가 변하지 않는다는 가정의 최대치입니다.'],
-  ], LEVEL_LABEL[state.active] + ' 기준');
+    { k: '소비자물가 영향', v: '+' + fmt(r.indices.consumer, 3) + '%', tone: 'down', t: ['가계소비 구성비 가중 · ', { b: r.label }] },
+    { k: '생산자물가 영향', v: '+' + fmt(r.indices.producer, 3) + '%', tone: 'down', t: '총산출 가중 평균' },
+    { k: '가장 크게 오르는 부문', v: t3[0].name + ' +' + fmt(t3[0].dp, 2) + '%', t: ['다음으로 ', { b: t3.slice(1).map((x) => x.name + ' +' + fmt(x.dp, 2) + '%').join(', ') }] },
+  ], LEVEL_LABEL[state.active] + ' 기준 · 비용 100% 전가·수요 불변 가정의 최대치');
 }
 
 /* ---------------- 시작 ---------------- */
