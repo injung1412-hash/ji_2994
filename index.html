@@ -105,6 +105,7 @@
   </aside>
 
   <main class="content">
+    <section class="insight insight-lg needs-data" id="lv-insight" aria-live="polite" hidden></section>
     <!-- ============ 자료 불러오기 ============ -->
     <section class="panel" id="loader" aria-labelledby="loader-h">
       <div class="panel-head">
@@ -219,6 +220,7 @@
           <button type="button" class="ghost quick-load" data-level="large">통합대분류 불러오기</button></div>
       </div>
       <div class="needs-data">
+        <div class="insight" id="st-insight" hidden></div>
         <div id="macro" class="cards"></div>
         <h3>부문별 구조 지표</h3>
         <div class="controls"><div class="grid3">
@@ -245,6 +247,7 @@
           <button type="button" class="ghost quick-load" data-level="large">통합대분류 불러오기</button></div>
       </div>
       <div class="needs-data">
+        <div class="insight" id="lk-insight" hidden></div>
         <div class="controls"><div class="grid2">
           <label>부문 검색<input id="lk-q" placeholder="이름 또는 코드"></label>
           <label>부문<select id="lk-sector"></select></label>
@@ -272,6 +275,7 @@
           <button type="button" class="ghost quick-load" data-level="large">통합대분류 불러오기</button></div>
       </div>
       <div class="needs-data">
+        <div class="insight" id="mu-insight" hidden></div>
         <p id="mu-emp-note" class="unit-note"></p>
         <div class="grid2 cols">
           <figure class="chart">
@@ -302,6 +306,7 @@
           <button type="button" class="ghost quick-load" data-level="large">통합대분류 불러오기</button></div>
       </div>
       <div class="needs-data">
+        <div class="insight" id="fd-insight" hidden></div>
         <div class="scroll"><table id="fd-table"></table></div>
         <h3>항목별 부문 유발액</h3>
         <div class="controls"><label>최종수요 항목<select id="fd-item"></select></label></div>
@@ -346,6 +351,7 @@
         </div>
         <p id="sim-status" role="status" class="status">시나리오를 추가하세요.</p>
         <div id="sim-result" hidden>
+          <div class="insight" id="sim-insight" hidden></div>
           <div id="sim-cards" class="cards"></div>
           <p id="sim-note" class="unit-note"></p>
           <h3>생산유발액 상위 15개 부문 <small>백만원 · 진한 부분 = 직접효과</small></h3>
@@ -388,6 +394,7 @@
         <div class="row"><button type="button" id="pr-run">가격파급 계산</button></div>
         <p id="pr-status" role="status" class="status">충격 유형과 상승률을 고른 뒤 계산하세요.</p>
         <div id="pr-result" hidden>
+          <div class="insight" id="pr-insight" hidden></div>
           <div id="pr-cards" class="cards"></div>
           <h3>가격 상승률 상위 20개 부문 <small>%</small></h3>
           <div id="pr-bars" class="bars"></div>
