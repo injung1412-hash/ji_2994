@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI 대학생활 시뮬레이션</title>
+  <meta name="description" content="인턴 병행·학점 집중·동아리 확대 중 어디에 시간을 쓸지, 남는 자유 시간과 예상 학점을 같은 기준으로 비교하는 시뮬레이션 시스템">
+  <style>
+    :root {
+      --bg: #f8fafc; --card: #ffffff; --fg: #0f172a; --muted: #64748b; --line: #e2e8f0;
+      --accent: #2563eb; --accent-fg: #ffffff; --soft: #eff6ff; --warn: #b45309; --warn-soft: #fffbeb;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --bg: #0b1120; --card: #111a2e; --fg: #e2e8f0; --muted: #94a3b8; --line: #1e293b;
+        --accent: #60a5fa; --accent-fg: #0b1120; --soft: #172554; --warn: #fbbf24; --warn-soft: #2a2110;
+      }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--fg); line-height: 1.65;
+      font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif; }
+    main { max-width: 960px; margin: 0 auto; padding: 0 16px 64px; }
+    a { color: var(--accent); }
+    header.hero { padding: 56px 0 32px; }
+    .eyebrow { color: var(--accent); font-weight: 700; font-size: 14px; letter-spacing: .02em; }
+    h1 { font-size: clamp(28px, 5vw, 40px); line-height: 1.25; margin: 8px 0 12px; }
+    h2 { font-size: 22px; margin: 48px 0 12px; }
+    h3 { font-size: 17px; margin: 0 0 6px; }
+    .lead { font-size: 18px; color: var(--muted); max-width: 720px; margin: 0; }
+    .actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
+    .btn { display: inline-block; padding: 12px 20px; border-radius: 10px; font-weight: 700;
+      text-decoration: none; border: 1px solid var(--line); background: var(--card); color: var(--fg); }
+    .btn.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+    .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+    .card p { margin: 0; color: var(--muted); font-size: 15px; }
+    .step { font-size: 13px; font-weight: 700; color: var(--accent); }
+    .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
+    table { width: 100%; border-collapse: collapse; font-size: 15px; }
+    th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { background: var(--soft); white-space: nowrap; }
+    tr:last-child td { border-bottom: 0; }
+    code, pre { font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; font-size: 14px; }
+    pre { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px;
+      overflow-x: auto; margin: 8px 0; }
+    .formula { background: var(--soft); border-radius: 10px; padding: 14px 16px; font-size: 15px; overflow-x: auto; }
+    .calc { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); margin-top: 12px; }
+    .calc label { display: flex; flex-direction: column; gap: 4px; font-size: 14px; color: var(--muted); }
+    .calc input { padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg);
+      color: var(--fg); font: inherit; }
+    .result { margin-top: 14px; font-size: 16px; }
+    .result strong { font-size: 22px; }
+    .warn { color: var(--warn); background: var(--warn-soft); border-radius: 8px; padding: 8px 12px; margin-top: 8px; }
+    .note { color: var(--muted); font-size: 14px; }
+    footer { color: var(--muted); font-size: 14px; border-top: 1px solid var(--line); margin-top: 56px; padding-top: 16px; }
+  </style>
+</head>
+<body>
+<main>
+  <header class="hero">
+    <div class="eyebrow">🎓 AI 대학생활 시뮬레이션 시스템</div>
+    <h1>이번 학기, 어디에 시간을 쓸까?</h1>
+    <p class="lead">
+      인턴 병행 · 학점 집중 · 동아리 확대처럼 고민되는 선택지를
+      <b>남는 자유 시간</b>과 <b>예상 학점</b>이라는 같은 기준으로 나란히 비교합니다.
+      학기 말에 실제 결과를 기록하면 다음 학기 예측에 반영됩니다.
+    </p>
+    <div class="actions">
+      <a class="btn primary" href="app.html">▶ 브라우저에서 바로 실행</a>
+      <a class="btn" href="https://github.com/injung1412-hash/ji_2994/tree/main/campus-sim">GitHub 코드 보기</a>
+    </div>
+    <p class="note">결정은 시스템이 아니라 내가 합니다. 추정치이며 결과를 보장하지 않습니다.</p>
+  </header>
+
+  <section>
+    <h2>사용 흐름</h2>
+    <div class="grid">
+      <div class="card"><div class="step">① 프로필</div><h3>이번 학기 내 상황</h3>
+        <p>학기, 현재 학점, 수강 학점, 수업 외 주간 자유 시간 4가지만 입력합니다.</p></div>
+      <div class="card"><div class="step">② 선택지</div><h3>비교할 선택지 1~3개</h3>
+        <p>선택지마다 주간 투입 시간과 세부 조건(글)을 적습니다. 예: 주 3일 근무, 시험 기간에도 근무.</p></div>
+      <div class="card"><div class="step">③ 결과·보고서</div><h3>같은 기준의 비교표</h3>
+        <p>남는 시간·예상 학점을 비교하고, 시간이 모자라는 선택지에는 경고를 띄웁니다.</p></div>
+      <div class="card"><div class="step">④ 학기 말 기록</div><h3>실제 결과로 되돌아보기</h3>
+        <p>실제 학점·만족도·자유 평가를 기록하면 예측 오차를 보여 주고 다음 학기 예측에 넘깁니다.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>예상 학점 계산식</h2>
+    <p>같은 입력에는 항상 같은 값이 나오는 계산식으로 <b>보정 전 예상 학점</b>을 구한 뒤,
+      AI(Claude)가 세부 조건 글과 지난 학기 기록을 읽고 <b>±0.3 안에서만</b> 보정합니다.
+      AI가 실패하거나 범위를 벗어나면 계산식 결과에 “AI 보정 없음”을 붙여 그대로 보여 줍니다.</p>
+    <div class="formula">
+      남는 자유 시간 = 주간 자유 시간 − 투입 시간<br>
+      보정 전 예상 학점 = 현재 학점 + (남는 시간 − 자유 시간 × 0.6) × 0.02 − (수강 학점 − 18) × 0.01
+      <span class="note">(0.0~4.5로 제한)</span>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h3>계산식 미리 보기</h3>
+      <p>앱의 simulation 모듈과 같은 식입니다. AI 보정은 포함하지 않습니다.</p>
+      <div class="calc">
+        <label>현재 학점<input id="gpa" type="number" min="0" max="4.5" step="0.1" value="3.8"></label>
+        <label>수강 학점<input id="credits" type="number" min="1" max="30" step="1" value="18"></label>
+        <label>주간 자유 시간<input id="free" type="number" min="1" max="168" step="1" value="25"></label>
+        <label>선택지 투입 시간<input id="hours" type="number" min="0" max="168" step="1" value="15"></label>
+      </div>
+      <div class="result" id="result" aria-live="polite"></div>
+    </div>
+    <p class="note">계산식의 기준값(0.6, 0.02, 18, 0.01)과 AI 보정 폭 ±0.3은 실제 기록으로 검증하지 않은 가정입니다.
+      학기 말 기록이 쌓이면 예측 오차로 점검할 수 있습니다.</p>
+  </section>
+
+  <section>
+    <h2>모듈 구성</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>모듈</th><th>하는 일</th><th>기능 번호</th></tr></thead>
+        <tbody>
+          <tr><td><code>profile</code></td><td>이번 학기 상황 4가지 입력·검증 (학번·실명·가구 소득은 받지 않음)</td><td>F01</td></tr>
+          <tr><td><code>scenario</code></td><td>선택지 1~3개와 세부 조건 정리, 학기 초 기록을 CSV에 저장</td><td>F02, F03</td></tr>
+          <tr><td><code>simulation</code></td><td>남는 시간·보정 전 예상 학점 계산, AI ±0.3 보정, 실패 시 계산식 결과 유지</td><td>F04, F05, F12</td></tr>
+          <tr><td><code>compare</code></td><td>선택지를 같은 칸으로 비교, 투입 시간이 자유 시간을 넘으면 경고</td><td>F06, F09</td></tr>
+          <tr><td><code>report</code></td><td>어떤 선택이 어떤 점에서 나은지 요약 (정답을 단정하지 않음)</td><td>F10</td></tr>
+          <tr><td><code>feedback</code></td><td>학기 말 실제 결과 기록, 예측 오차 계산, 다음 학기 예측에 전달</td><td>F07, F08, F11</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>저장하는 데이터 (10개 항목)</h2>
+    <p>한 줄 = 한 학기 · 한 선택지. <code>data/simulation_log.csv</code> 한 파일에만 저장하며 칸을 늘리지 않습니다.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>구분</th><th>항목</th><th>예시</th></tr></thead>
+        <tbody>
+          <tr><td>프로필</td><td>term · current_gpa · course_credits · weekly_free_hours</td><td>2026-2 · 3.8 · 18 · 25</td></tr>
+          <tr><td>시나리오</td><td>scenario_option · scenario_hours · scenario_condition</td><td>인턴 병행 · 15 · 주 3일 근무</td></tr>
+          <tr><td>실제 결과</td><td>actual_gpa · satisfaction · user_review</td><td>3.5 · 4 · 과제 시간이 부족했다</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">예상 학점과 AI 보정값은 저장하지 않고, 예측 오차는 저장된 입력으로 계산식을 다시 돌려 구합니다.</p>
+  </section>
+
+  <section>
+    <h2>내 컴퓨터에서 실행하기 (AI 보정 포함)</h2>
+    <p>웹 버전은 API 키를 숨길 수 없어 AI 보정 없이 계산식 결과만 보여 줍니다. AI 보정까지 쓰려면 내 컴퓨터에서 실행하세요.</p>
+<pre>git clone https://github.com/injung1412-hash/ji_2994.git
+cd ji_2994/campus-sim
+pip install -r requirements.txt
+cp ai_config.example.ini ai_config.ini   # api_key = 뒤에 본인 키 입력
+python3 app.py</pre>
+    <p class="note">테스트: <code>python3 -m unittest discover -s tests</code> (19개).
+      <code>ai_config.ini</code>와 내 기록 파일은 GitHub에 올라가지 않도록 제외되어 있습니다.</p>
+  </section>
+
+  <footer>
+    AI 대학생활 시뮬레이션 시스템 · 추정치이며 결과를 보장하지 않습니다. 이 보고서는 비교 근거일 뿐이며, 결정은 내가 합니다.
+  </footer>
+</main>
+
+<script>
+  // modules/simulation.py의 base_gpa와 같은 식
+  const SPARE_RATIO = 0.6, HOUR_WEIGHT = 0.02, BASE_CREDITS = 18, CREDIT_WEIGHT = 0.01;
+  const ids = ["gpa", "credits", "free", "hours"];
+  const fmt = (v) => String(Math.round(v * 100) / 100);
+
+  function update() {
+    const [gpa, credits, free, hours] = ids.map((id) => parseFloat(document.getElementById(id).value));
+    const out = document.getElementById("result");
+    if ([gpa, credits, free, hours].some(Number.isNaN)) { out.textContent = "숫자를 모두 입력하세요."; return; }
+    const left = free - hours;
+    const raw = gpa + (left - free * SPARE_RATIO) * HOUR_WEIGHT - (credits - BASE_CREDITS) * CREDIT_WEIGHT;
+    const value = Math.min(Math.max(raw, 0), 4.5);
+    out.innerHTML =
+      `남는 자유 시간 <b>${fmt(left)}시간</b> · 보정 전 예상 학점 <strong>${value.toFixed(2)}</strong>` +
+      `<div class="note">${fmt(gpa)} + (${fmt(left)} − ${fmt(free)}×${SPARE_RATIO})×${HOUR_WEIGHT}` +
+      ` − (${fmt(credits)} − ${BASE_CREDITS})×${CREDIT_WEIGHT} = ${fmt(raw)}</div>` +
+      (left < 0 ? `<div class="warn">⚠️ 투입 시간이 주간 자유 시간을 넘습니다 (${fmt(-left)}시간 부족).</div>` : "");
+  }
+  ids.forEach((id) => document.getElementById(id).addEventListener("input", update));
+  update();
+</script>
+</body>
+</html>

@@ -1,0 +1,5 @@
+# 개인 API 키와 개인 기록은 GitHub에 올리지 않습니다.
+ai_config.ini
+data/simulation_log.csv
+__pycache__/
+*.pyc

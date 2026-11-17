@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>대학생활 시뮬레이션 · 웹 실행</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@stlite/browser@1.12.0/build/stlite.css">
+  <style>
+    :root { --bg: #ffffff; --fg: #1f2937; --muted: #6b7280; --line: #e5e7eb; --accent: #2563eb; }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #0f172a; --fg: #e5e7eb; --muted: #94a3b8; --line: #1e293b; --accent: #60a5fa; }
+    }
+    html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+      font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif; }
+    .bar { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; padding: 8px 16px;
+      border-bottom: 1px solid var(--line); font-size: 14px; }
+    .bar a, .bar button { color: var(--accent); background: none; border: 0; padding: 0; font: inherit;
+      cursor: pointer; text-decoration: none; }
+    .bar a:hover, .bar button:hover { text-decoration: underline; }
+    .bar .note { color: var(--muted); flex: 1 1 280px; }
+    #root { height: calc(100% - 42px); }
+  </style>
+</head>
+<body>
+  <div class="bar">
+    <a href="./">← 소개 페이지</a>
+    <span class="note">브라우저 안에서 Python으로 실행됩니다. 기록은 이 브라우저에만 저장되고, 웹 버전은 AI 보정 없이 계산식 결과만 보여 줍니다.</span>
+    <button type="button" id="download">내 기록(CSV) 내려받기</button>
+    <button type="button" id="reset">기록 모두 지우기</button>
+  </div>
+  <div id="root"></div>
+
+  <script type="module">
+    import { mount } from "https://cdn.jsdelivr.net/npm/@stlite/browser@1.12.0/build/stlite.js";
+
+    // 저장소에 있는 원본 코드를 그대로 불러와 실행합니다(코드를 복사해 두지 않습니다).
+    const source = (path) => ({ url: new URL(path, location.href).href });
+    const LOG = "/home/pyodide/data/simulation_log.csv";
+
+    const app = mount(
+      {
+        entrypoint: "app.py",
+        files: {
+          "app.py": source("app.py"),
+          "modules/compare.py": source("modules/compare.py"),
+          "modules/feedback.py": source("modules/feedback.py"),
+          "modules/profile.py": source("modules/profile.py"),
+          "modules/report.py": source("modules/report.py"),
+          "modules/scenario.py": source("modules/scenario.py"),
+          "modules/simulation.py": source("modules/simulation.py"),
+        },
+        requirements: [],
+        // data 폴더를 브라우저 저장소(IndexedDB)에 연결해 새로고침해도 기록이 남게 합니다.
+        idbfsMountpoints: ["/home/pyodide/data"],
+        streamlitConfig: { "client.toolbarMode": "viewer" },
+      },
+      document.getElementById("root"),
+    );
+
+    document.getElementById("download").addEventListener("click", async () => {
+      let text;
+      try {
+        text = await app.readFile(LOG, { encoding: "utf8" });
+      } catch {
+        alert("아직 저장된 기록이 없습니다. 선택지를 먼저 입력하세요.");
+        return;
+      }
+      const blob = new Blob([text], { type: "text/csv;charset=utf-8" });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = "simulation_log.csv";
+      link.click();
+      URL.revokeObjectURL(link.href);
+    });
+
+    // 기록을 브라우저 저장소에 주기적으로 반영합니다(이미 반영되어 있으면 아무 일도 하지 않습니다).
+    const SYNC = "import pyodide_js\npyodide_js.FS.syncfs(False, lambda error=None: None)";
+    setInterval(() => app.runPython(SYNC).catch(() => {}), 5000);
+
+    document.getElementById("reset").addEventListener("click", () => {
+      if (!confirm("이 브라우저에 저장된 시뮬레이션 기록을 모두 지울까요? 되돌릴 수 없습니다.")) return;
+      app.unmount();
+      // Emscripten IDBFS는 연결한 폴더 경로를 데이터베이스 이름으로 씁니다.
+      const request = indexedDB.deleteDatabase("/home/pyodide/data");
+      request.onsuccess = request.onerror = request.onblocked = () => location.reload();
+    });
+  </script>
+</body>
+</html>
