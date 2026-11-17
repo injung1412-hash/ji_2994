@@ -174,6 +174,22 @@ class FeedbackTest(unittest.TestCase):
         self.assertEqual(len(feedback.past_records("2027-1", self.path)), 1)
         self.assertEqual(feedback.mean_abs_error(feedback.history(self.path)), 0.2)
 
+    def test_delete_selected_rows(self):
+        self.assertEqual(scenario.delete_rows([0], self.path), 1)
+        rows = scenario.read_log(self.path)
+        self.assertEqual([row["scenario_option"] for row in rows], ["학점 집중"])
+        with self.assertRaises(ValueError):
+            scenario.delete_rows([], self.path)
+        with self.assertRaises(ValueError):
+            scenario.delete_rows([5], self.path)
+
+    def test_clear_log_keeps_header(self):
+        scenario.clear_log(self.path)
+        self.assertEqual(scenario.read_log(self.path), [])
+        self.assertTrue(self.path.read_text(encoding="utf-8-sig").startswith(",".join(scenario.LOG_FIELDS)))
+        scenario.save_plan(PROFILE, plans(10), self.path)   # 지운 뒤에도 다시 기록할 수 있습니다
+        self.assertEqual(len(scenario.read_log(self.path)), 1)
+
     def test_filled_row_cannot_be_replanned(self):
         feedback.record_result(0, 3.5, 4, "후기", self.path)
         with self.assertRaises(ValueError):

@@ -32,7 +32,7 @@ from modules import ui
 
 
 APP_TITLE = "AI 대학생활 시뮬레이션 시스템"
-MENUS = ["🏠 홈", "👤 프로필", "🔀 선택지", "📊 결과·보고서", "📝 학기 말 기록"]
+MENUS = ["🏠 홈", "👤 프로필", "🔀 선택지", "📊 결과·보고서", "📝 학기 말 기록", "🗂️ 기록 관리"]
 
 st.set_page_config(page_title=APP_TITLE, page_icon="🎓", layout="wide")
 ui.inject_css()
@@ -58,6 +58,43 @@ def run_simulation() -> None:
         result = simulation_mod.run(profile, st.session_state.scenarios, past)
     st.session_state.table = compare_mod.compare(result["rows"], profile["weekly_free_hours"])
     st.session_state.ai_status = result["ai_status"]
+
+
+@st.dialog("선택한 기록을 지울까요?")
+def confirm_delete(indices: list, labels: list) -> None:
+    st.write(f"아래 기록 {len(indices)}줄을 지웁니다. **지운 기록은 되돌릴 수 없습니다.**")
+    for label in labels:
+        st.markdown(f"- {label}")
+    c1, c2 = st.columns(2)
+    if c1.button("🗑️ 지우기", type="primary", use_container_width=True):
+        try:
+            count = scenario_mod.delete_rows(indices)
+        except ValueError as error:
+            st.error(str(error))
+            return
+        profile = st.session_state.profile
+        if profile and any(label.startswith(profile["term"] + " ·") for label in labels):
+            st.session_state.table = None   # 이번 학기 기록을 지웠으면 이전 결과 화면도 비웁니다
+        st.session_state.delete_round = st.session_state.get("delete_round", 0) + 1
+        go_to("🗂️ 기록 관리", f"기록 {count}줄을 지웠습니다.")
+    if c2.button("취소", use_container_width=True):
+        st.rerun()
+
+
+@st.dialog("모든 기록을 지울까요?")
+def confirm_clear() -> None:
+    st.write("simulation_log.csv의 기록을 **모두** 지우고, 입력한 프로필 · 선택지 · 결과도 비워 처음 상태로 돌아갑니다.")
+    st.warning("지운 기록은 되돌릴 수 없습니다. 필요하면 먼저 CSV로 내려받아 두세요.", icon="⚠️")
+    agree = st.checkbox("모든 기록을 지우는 데 동의합니다")
+    c1, c2 = st.columns(2)
+    if c1.button("⚠️ 모두 지우기", type="primary", disabled=not agree, use_container_width=True):
+        scenario_mod.clear_log()
+        for key, default in [("profile", None), ("scenarios", []), ("table", None), ("ai_status", "")]:
+            st.session_state[key] = default
+        st.session_state.delete_round = st.session_state.get("delete_round", 0) + 1
+        go_to("🗂️ 기록 관리", "모든 기록을 지웠습니다. 처음부터 다시 시작할 수 있습니다.")
+    if c2.button("취소", use_container_width=True):
+        st.rerun()
 
 
 def safe_history() -> list:
@@ -340,3 +377,77 @@ elif menu == "📝 학기 말 기록":
             use_container_width=True,
         )
         st.caption("예측 오차 = 실제 학점 − 저장된 입력으로 계산식을 다시 돌린 예상 학점")
+
+
+elif menu == "🗂️ 기록 관리":
+    ui.page_header("🗂️", "기록 관리", "저장된 기록 확인 · 지우기", "잘못 입력한 기록은 골라서 지우고, 처음부터 다시 하고 싶으면 모두 지웁니다.")
+    try:
+        log = scenario_mod.read_log()
+    except ValueError as error:
+        st.error(str(error))
+        st.caption("기록 파일을 읽을 수 없을 때는 파일을 초기화하면 다시 쓸 수 있습니다. 기존 내용은 사라집니다.")
+        if st.button("⚠️ 기록 파일 초기화"):
+            confirm_clear()
+        st.stop()
+
+    filled = [row for row in log if row["actual_gpa"] != ""]
+    ui.stats(
+        [
+            ("🗂️", "전체 기록", f"{len(log)}줄"),
+            ("📝", "실제 결과까지 기록", f"{len(filled)}줄"),
+            ("📅", "기록된 학기", f"{len({row['term'] for row in log})}개"),
+        ]
+    )
+
+    if not log:
+        st.info("저장된 기록이 없습니다. 선택지를 입력하면 여기에 쌓입니다.")
+        if st.button("🔀 선택지 입력하러 가기", type="primary"):
+            go_to("🔀 선택지" if st.session_state.profile else "👤 프로필")
+        st.stop()
+
+    st.subheader("저장된 기록")
+    st.caption("지울 줄의 **지우기** 칸을 체크하세요. 한 줄 = 한 학기 · 한 선택지입니다.")
+    edited = st.data_editor(
+        [
+            {
+                "지우기": False,
+                "학기": row["term"],
+                "선택지": row["scenario_option"],
+                "투입 시간": f"{float(row['scenario_hours']):g}시간",
+                "세부 조건": row["scenario_condition"],
+                "실제 학점": row["actual_gpa"] or "—",
+                "만족도": row["satisfaction"] or "—",
+                "자유 평가": row["user_review"] or "—",
+            }
+            for row in log
+        ],
+        hide_index=True,
+        use_container_width=True,
+        disabled=["학기", "선택지", "투입 시간", "세부 조건", "실제 학점", "만족도", "자유 평가"],
+        column_config={"지우기": st.column_config.CheckboxColumn("지우기", width="small")},
+        key=f"log_editor_{st.session_state.get('delete_round', 0)}",
+    )
+    picked = [index for index, row in enumerate(edited) if row["지우기"]]
+    labels = [
+        f"{log[index]['term']} · {log[index]['scenario_option']} (주 {float(log[index]['scenario_hours']):g}시간)"
+        + (" — 실제 결과 있음" if log[index]["actual_gpa"] else "")
+        for index in picked
+    ]
+
+    c1, c2, c3 = st.columns([1.3, 1, 1])
+    if c1.button(
+        f"🗑️ 선택한 기록 지우기 ({len(picked)}줄)", type="primary", disabled=not picked, use_container_width=True
+    ):
+        confirm_delete(picked, labels)
+    if c2.button("⚠️ 모든 기록 지우기", use_container_width=True):
+        confirm_clear()
+    with open(scenario_mod.LOG_PATH, "rb") as f:
+        c3.download_button(
+            "⬇️ CSV 내려받기", f.read(), file_name="simulation_log.csv", mime="text/csv", use_container_width=True
+        )
+    ui.callout(
+        "💡",
+        "실제 결과까지 기록한 줄을 지우면 예측 오차 기록과 다음 학기 AI 보정에 쓰이는 지난 학기 기록에서도 빠집니다. "
+        "지운 기록은 되돌릴 수 없으니 필요하면 먼저 CSV로 내려받아 두세요.",
+    )
+
