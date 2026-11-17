@@ -82,7 +82,8 @@ python3 -m unittest discover -s tests
 ```
 campus-sim/
 ├── app.py                  # Streamlit 화면 (python3 app.py 로 실행)
-├── modules/                # profile · scenario · simulation · compare · report · feedback
+├── modules/                # profile · scenario · simulation · compare · report · feedback · ui(화면 꾸미기)
+├── .streamlit/config.toml  # 앱 테마(색 · 글꼴)
 ├── tests/test_modules.py   # 모듈 6개 확인 테스트
 ├── data/                   # simulation_log.csv 저장 위치
 ├── data_dictionary.md      # 데이터 사전
