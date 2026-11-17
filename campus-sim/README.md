@@ -1,0 +1,93 @@
+# AI 대학생활 시뮬레이션 시스템
+
+학기 초에 **인턴 병행 · 학점 집중 · 동아리 확대** 중 어디에 시간을 쓸지 고민될 때,
+선택지마다 **남는 자유 시간**과 **예상 학점**을 같은 기준으로 비교해 보여 주는 Streamlit 앱입니다.
+학기 말에 실제 결과를 기록하면 예측 오차를 보여 주고, 다음 학기 예측에 반영합니다.
+
+- **소개 페이지: https://injung1412-hash.github.io/ji_2994/campus-sim/**
+- **브라우저에서 바로 실행: https://injung1412-hash.github.io/ji_2994/campus-sim/app.html**
+  (설치 없이 브라우저 안에서 Python으로 실행되며, AI 보정 없이 계산식 결과만 보여 줍니다)
+
+> 결정은 시스템이 아니라 내가 합니다. 추정치이며 결과를 보장하지 않습니다.
+
+## 흐름
+
+```
+profile → scenario → simulation → compare → report → (학기 말) feedback → 다음 학기 simulation
+```
+
+| 화면 | 내용 |
+|---|---|
+| 🏠 홈 | 진행 상황(프로필 · 선택지 수 · 기록된 학기 결과)과 다음 단계 버튼 |
+| 👤 프로필 | 학기, 현재 학점, 수강 학점, 주간 자유 시간 입력 |
+| 🔀 선택지 | 선택지 1~3개의 이름 · 주간 투입 시간 · 세부 조건(글) 입력 → 저장하면 바로 시뮬레이션 |
+| 📊 결과·보고서 | 비교표, 계산 근거와 AI 보정 이유, 시간 부족 경고, 요약 보고서 |
+| 📝 학기 말 기록 | 실제로 고른 선택지의 실제 학점 · 만족도 · 자유 평가 기록, 지금까지의 예측 오차 |
+
+## 모듈
+
+| 모듈 | 하는 일 | 기능 |
+|---|---|---|
+| `modules/profile.py` | 이번 학기 상황 4가지 입력·검증 (학번 · 실명 · 가구 소득은 받지 않음) | F01 |
+| `modules/scenario.py` | 선택지 정리, 학기 초 기록을 `data/simulation_log.csv`에 저장 | F02, F03 |
+| `modules/simulation.py` | 남는 시간 · 보정 전 예상 학점 계산, AI ±0.3 보정, 실패 시 계산식 결과 유지 | F04, F05, F12 |
+| `modules/compare.py` | 같은 기준의 비교표, 투입 시간 > 자유 시간이면 경고 | F06, F09 |
+| `modules/report.py` | 어떤 선택이 어떤 점에서 나은지 요약 (정답을 단정하지 않음) | F10 |
+| `modules/feedback.py` | 학기 말 결과 기록, 예측 오차 계산, 지난 학기 기록을 다음 예측에 전달 | F07, F08, F11 |
+
+### 계산식
+
+```
+남는 자유 시간   = 주간 자유 시간 − 투입 시간
+보정 전 예상 학점 = 현재 학점 + (남는 시간 − 자유 시간 × 0.6) × 0.02 − (수강 학점 − 18) × 0.01   (0.0~4.5로 제한)
+예상 학점        = 보정 전 예상 학점 + AI 보정(−0.3 ~ +0.3)
+```
+
+예: 현재 학점 3.8, 18학점, 자유 시간 25시간 → 투입 0시간 4.0 · 5시간 3.9 · 10시간 3.8 · 15시간 3.7
+
+기준값(0.6, 0.02, 18, 0.01)과 AI 보정 폭 ±0.3은 실제 기록으로 검증하지 않은 가정입니다.
+
+## 데이터
+
+[`data_dictionary.md`](data_dictionary.md) 참고. `data/simulation_log.csv` 한 파일(utf-8-sig), 한 줄 = 한 학기 · 한 선택지, 항목 10개.
+예상 학점과 AI 보정값은 저장하지 않고, 예측 오차는 저장된 입력으로 계산식을 다시 돌려 구합니다.
+
+## 내 컴퓨터에서 실행 (AI 보정 포함)
+
+```bash
+git clone https://github.com/injung1412-hash/ji_2994.git
+cd ji_2994/campus-sim
+pip install -r requirements.txt
+cp ai_config.example.ini ai_config.ini   # api_key = 뒤에 본인의 Claude API 키 입력
+python3 app.py                           # 브라우저가 http://localhost:8501 로 열립니다
+```
+
+API 키를 비워 두면 AI 보정만 꺼지고 나머지 기능은 그대로 동작합니다.
+
+## 테스트
+
+```bash
+python3 -m unittest discover -s tests
+```
+
+## GitHub에 올라가지 않는 파일
+
+`.gitignore`로 아래 파일을 제외합니다.
+
+- `ai_config.ini` — 개인 API 키
+- `data/simulation_log.csv` — 개인 학점 기록
+
+## 폴더 구조
+
+```
+campus-sim/
+├── app.py                  # Streamlit 화면 (python3 app.py 로 실행)
+├── modules/                # profile · scenario · simulation · compare · report · feedback
+├── tests/test_modules.py   # 모듈 6개 확인 테스트
+├── data/                   # simulation_log.csv 저장 위치
+├── data_dictionary.md      # 데이터 사전
+├── ai_config.example.ini   # API 키 설정 예시
+├── requirements.txt
+├── index.html              # 소개 페이지 (GitHub Pages)
+└── app.html                # 브라우저 실행 페이지 (stlite)
+```
