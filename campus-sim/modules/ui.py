@@ -253,6 +253,8 @@ def option_cards(table: dict) -> None:
             badges.append(f'<span class="cs-pill warn">⚠️ {fmt(-row["free_left"])}시간 부족</span>')
         else:
             badges.append('<span class="cs-pill ok">✓ 시간 안에 가능</span>')
+        if row.get("study"):
+            badges.append('<span class="cs-pill info">📚 공부 시간으로 계산</span>')
         if len(rows) > 1 and row["expected_gpa"] == top_gpa:
             badges.append('<span class="cs-pill info">예상 학점 가장 높음</span>')
         if len(rows) > 1 and row["free_left"] == top_free:

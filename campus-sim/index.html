@@ -303,11 +303,11 @@
             <thead><tr><th>선택지</th><th class="hide-sm">투입</th><th>남는 시간</th><th>예상 학점</th><th>시간 상태</th></tr></thead>
             <tbody>
               <tr><td><span class="dot" style="background:var(--series-1)"></span>인턴 병행</td><td class="hide-sm">30h</td><td>−5h</td><td>3.40</td><td><span class="tag warn">⚠️ 시간 부족</span></td></tr>
-              <tr><td><span class="dot" style="background:var(--series-2)"></span>학점 집중</td><td class="hide-sm">5h</td><td>20h</td><td>3.90</td><td><span class="tag ok">✓ 가능</span></td></tr>
+              <tr><td><span class="dot" style="background:var(--series-2)"></span>학점 집중</td><td class="hide-sm">5h</td><td>20h</td><td>4.05</td><td><span class="tag ok">✓ 가능</span></td></tr>
               <tr><td><span class="dot" style="background:var(--series-3)"></span>동아리 확대</td><td class="hide-sm">10h</td><td>15h</td><td>3.80</td><td><span class="tag ok">✓ 가능</span></td></tr>
             </tbody>
           </table>
-          <div class="report">📝 예상 학점은 <b>학점 집중</b>이 3.90으로 가장 높습니다. 결정은 내가 합니다.</div>
+          <div class="report">📝 예상 학점은 <b>학점 집중</b>이 4.05로 가장 높습니다. 결정은 내가 합니다.</div>
         </main>
       </div>
     </div>
@@ -393,7 +393,7 @@
         </div>
         <div class="chart">
           <h3>보정 전 예상 학점</h3>
-          <div class="cap">점선 = 현재 학점. 남는 시간이 많을수록, 수강 학점이 적을수록 높게 나옵니다.</div>
+          <div class="cap">점선 = 현재 학점. 공부형(📚) 선택지는 시간을 늘릴수록 오르고, 그 밖의 선택지는 시간을 늘릴수록 내려갑니다.</div>
           <div id="gpaChart"></div>
         </div>
         <div class="summary" id="summary" aria-live="polite"></div>
@@ -414,7 +414,7 @@
       <div class="card">
         <div class="label">1 · 계산식</div>
         <h3>보정 전 예상 학점</h3>
-        <p class="small">현재 학점에서 출발해 남는 시간과 수강 학점만큼 오르내립니다.</p>
+        <p class="small">현재 학점에서 출발해 남는 시간 · 수강 학점만큼 오르내리고, 📚 공부형 선택지는 공부 시간만큼 오릅니다.</p>
       </div>
       <div class="arrow">→</div>
       <div class="card">
@@ -436,10 +436,11 @@
     </div>
     <div class="formula">
       남는 자유 시간&nbsp;&nbsp; = 주간 자유 시간 − 투입 시간<br>
-      보정 전 예상 학점 = 현재 학점 + (남는 시간 − 자유 시간 × 0.6) × 0.02 − (수강 학점 − 18) × 0.01 &nbsp;→ 0.0~4.5로 제한<br>
+      보정 전 예상 학점 (공부 외 선택지) = 현재 학점 + (남는 시간 − 자유 시간 × 0.6) × 0.02 − (수강 학점 − 18) × 0.01<br>
+      보정 전 예상 학점 (📚 공부형&nbsp;&nbsp;&nbsp;&nbsp;) = 현재 학점 + 자유 시간 × 0.4 × 0.02 + 공부 시간 × 0.01 − (수강 학점 − 18) × 0.01 &nbsp;→ 0.0~4.5로 제한<br>
       예상 학점&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; = 보정 전 예상 학점 + AI 보정(−0.3 ~ +0.3)
     </div>
-    <p class="muted small" style="margin-top:10px">기준값(0.6, 0.02, 18, 0.01)과 보정 폭 ±0.3은 실제 기록으로 검증하지 않은 가정입니다. 학기 말 기록이 쌓이면 예측 오차로 점검할 수 있습니다.</p>
+    <p class="muted small" style="margin-top:10px">기준값(0.6, 0.02, 18, 0.01, 공부 0.01)과 보정 폭 ±0.3은 실제 기록으로 검증하지 않은 가정입니다. 학기 말 기록이 쌓이면 예측 오차로 점검할 수 있습니다.</p>
   </div>
 </section>
 
@@ -593,7 +594,9 @@ python3 app.py</pre>
 
 <script>
   // modules/simulation.py의 base_gpa와 같은 식
-  const SPARE_RATIO = 0.6, HOUR_WEIGHT = 0.02, BASE_CREDITS = 18, CREDIT_WEIGHT = 0.01;
+  const SPARE_RATIO = 0.6, HOUR_WEIGHT = 0.02, BASE_CREDITS = 18, CREDIT_WEIGHT = 0.01, STUDY_WEIGHT = 0.01;
+  const STUDY_KEYWORDS = ["공부", "학점", "스터디", "복습", "예습", "시험", "과제"];
+  const isStudy = (name) => STUDY_KEYWORDS.some((w) => name.includes(w));
   const COLORS = ["var(--series-1)", "var(--series-2)", "var(--series-3)"];
   const options = [
     { name: "인턴 병행", hours: 30 },
@@ -604,8 +607,11 @@ python3 app.py</pre>
   const fmt = (v) => String(Math.round(v * 100) / 100);
   const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
-  function baseGpa(gpa, credits, free, hours) {
-    const raw = gpa + ((free - hours) - free * SPARE_RATIO) * HOUR_WEIGHT - (credits - BASE_CREDITS) * CREDIT_WEIGHT;
+  function baseGpa(gpa, credits, free, hours, name) {
+    const credit = (credits - BASE_CREDITS) * CREDIT_WEIGHT;
+    const raw = isStudy(name)
+      ? gpa + (free - free * SPARE_RATIO) * HOUR_WEIGHT + Math.min(hours, free) * STUDY_WEIGHT - credit   // 공부형: 시간이 곧 공부 시간
+      : gpa + ((free - hours) - free * SPARE_RATIO) * HOUR_WEIGHT - credit;                             // 그 밖: 공부할 시간이 줄어듦
     return Math.round(Math.min(Math.max(raw, 0), 4.5) * 100) / 100;
   }
 
@@ -630,9 +636,10 @@ python3 app.py</pre>
   function render() {
     const gpa = parseFloat($("gpa").value), credits = parseFloat($("credits").value), free = parseFloat($("free").value);
     if ([gpa, credits, free].some(Number.isNaN)) { $("summary").textContent = "현재 학점 · 수강 학점 · 자유 시간을 모두 입력하세요."; return; }
-    const rows = options.map((o, i) => ({ ...o, color: COLORS[i], left: free - o.hours, gpa: baseGpa(gpa, credits, free, o.hours) }));
+    const rows = options.map((o, i) => ({ ...o, color: COLORS[i], left: free - o.hours, gpa: baseGpa(gpa, credits, free, o.hours, o.name), study: isStudy(o.name) }));
 
-    $("legend").innerHTML = rows.map((r) => `<span><span class="dot" style="background:${r.color}"></span>${esc(r.name)}</span>`).join("");
+    $("legend").innerHTML = rows.map((r) => `<span><span class="dot" style="background:${r.color}"></span>${esc(r.name)}${r.study ? " 📚" : ""}</span>`).join("")
+      + `<span class="muted">📚 = 공부 시간으로 계산 (이름에 공부·학점·스터디·복습·예습·시험·과제)</span>`;
 
     // 시간 예산: 0 ~ max(자유 시간, 최대 투입 시간)
     const scale = Math.max(free, ...rows.map((r) => r.hours), 1);

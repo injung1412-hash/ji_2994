@@ -190,6 +190,12 @@ elif menu == "🔀 선택지":
                 )
             items.append({"scenario_option": option, "scenario_hours": hours, "scenario_condition": condition})
         submitted = st.form_submit_button("저장하고 시뮬레이션 실행 ▶", type="primary")
+    ui.callout(
+        "📚",
+        "선택지 이름에 <b>" + " · ".join(simulation_mod.STUDY_KEYWORDS) + "</b> 중 하나가 들어가면 "
+        "투입 시간을 <b>공부 시간</b>으로 보고, 시간을 늘릴수록 예상 학점이 오르게 계산합니다. "
+        "그 밖의 선택지(인턴 · 동아리 등)는 투입 시간만큼 공부할 시간이 줄어 예상 학점이 내려갑니다.",
+    )
     ui.callout("🤖", "세부 조건 글은 AI가 읽고 예상 학점을 ±0.3 안에서 보정하는 데 씁니다. 구체적으로 적을수록 보정 이유가 분명해집니다.")
     if submitted:
         try:
@@ -242,7 +248,8 @@ elif menu == "📊 결과·보고서":
                     st.caption(f"세부 조건: {row['scenario_condition']}")
         st.caption(
             f"계산식의 기준값({simulation_mod.SPARE_RATIO}, {simulation_mod.HOUR_WEIGHT}, "
-            f"{simulation_mod.BASE_CREDITS}, {simulation_mod.CREDIT_WEIGHT})과 AI 보정 폭 ±{simulation_mod.AI_LIMIT}은 "
+            f"{simulation_mod.BASE_CREDITS}, {simulation_mod.CREDIT_WEIGHT}, 공부 {simulation_mod.STUDY_WEIGHT})과 "
+            f"AI 보정 폭 ±{simulation_mod.AI_LIMIT}은 "
             "실제 기록으로 검증하지 않은 가정입니다."
         )
 

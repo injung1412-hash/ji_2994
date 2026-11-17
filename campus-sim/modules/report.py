@@ -21,6 +21,8 @@ def option_line(row: dict) -> str:
         f"남는 자유 시간 {row['free_left']:g}시간, 예상 학점 {row['expected_gpa']:.2f} "
         f"(보정 전 {row['base_gpa']:.2f}, {ai})"
     )
+    if row.get("study"):
+        line += " — 📚 공부 시간으로 계산"
     if row["short"]:
         line += " — ⚠️ 시간 부족"
     return line

@@ -28,6 +28,7 @@ def table_rows(table: dict) -> list:
         {
             "선택지": row["scenario_option"],
             "투입 시간": f"{row['scenario_hours']:g}시간",
+            "시간 유형": "📚 공부" if row.get("study") else "공부 외 활동",
             "남는 자유 시간": f"{row['free_left']:g}시간",
             "보정 전 예상 학점": f"{row['base_gpa']:.2f}",
             "AI 보정": f"{row['adjust']:+.2f}" if row["ai_used"] else "AI 보정 없음",
