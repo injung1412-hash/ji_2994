@@ -1,6 +1,9 @@
 # scenario 모듈 — 비교할 선택지를 정리하고, 세부 조건을 글로 받습니다. (F02, F03 / 문제1)
 # 선택지마다 simulation_log.csv에 한 줄을 만들어 둡니다(실제 결과 3칸은 빈칸).
+# 한 선택지에 활동을 여러 개 넣으면 scenario_option에 "인턴 병행(15) + 공부(5)"처럼,
+# scenario_hours에 합계를 저장합니다(10개 항목을 늘리지 않습니다).
 import csv
+import re
 from pathlib import Path
 
 from modules.profile import PROFILE_FIELDS
@@ -11,28 +14,75 @@ RESULT_FIELDS = ["actual_gpa", "satisfaction", "user_review"]
 LOG_FIELDS = PROFILE_FIELDS + SCENARIO_FIELDS + RESULT_FIELDS   # 10개 항목, 칸을 늘리지 않습니다
 SUGGESTED_OPTIONS = ["인턴 병행", "학점 집중", "동아리 확대"]
 MAX_OPTIONS = 3
+MAX_ACTIVITIES = 5          # 한 선택지 안의 활동 수
+ACTIVITY_JOIN = " + "
+ACTIVITY_RE = re.compile(r"^(.+?)\((\d+(?:\.\d+)?)\)$")
 
 
 def number_text(value) -> str:
     return f"{float(value):g}"
 
 
+def encode_activities(activities: list) -> tuple:
+    """[(이름, 시간), ...] → (scenario_option, scenario_hours). 활동이 하나면 이름 그대로 저장합니다."""
+    if len(activities) == 1:
+        name, hours = activities[0]
+        return name, float(hours)
+    option = ACTIVITY_JOIN.join(f"{name}({number_text(hours)})" for name, hours in activities)
+    return option, float(sum(hours for _, hours in activities))
+
+
+def parse_activities(scenario_option, scenario_hours) -> list:
+    """저장된 선택지를 [(이름, 시간), ...]로 풉니다. 조합 형식이 아니면 활동 하나로 봅니다."""
+    option, total = str(scenario_option or ""), float(scenario_hours)
+    parts = option.split(ACTIVITY_JOIN)
+    if len(parts) >= 2:
+        matches = [ACTIVITY_RE.match(part.strip()) for part in parts]
+        if all(matches):
+            activities = [(m.group(1).strip(), float(m.group(2))) for m in matches]
+            if abs(sum(hours for _, hours in activities) - total) < 1e-6:
+                return activities
+    return [(option, total)]
+
+
+def activities_from_item(number: int, item: dict) -> list:
+    """화면에서 받은 활동 목록을 검사해 [(이름, 시간), ...]로 돌려줍니다."""
+    rows = item.get("activities")
+    if rows is None:   # 활동 목록 없이 이름 · 시간만 받은 경우(이전 방식)
+        rows = [{"name": item.get("scenario_option"), "hours": item.get("scenario_hours")}]
+    if not 1 <= len(rows) <= MAX_ACTIVITIES:
+        raise ValueError(f"선택지 {number}에는 활동을 1개에서 {MAX_ACTIVITIES}개까지 넣을 수 있습니다.")
+    activities, names = [], set()
+    for row in rows:
+        name = (row.get("name") or "").strip()
+        hours = row.get("hours")
+        if not name:
+            raise ValueError(f"선택지 {number}의 이름(활동 이름)을 입력해야 합니다.")
+        if hours is None or not 0 <= hours <= 168:
+            raise ValueError(f"선택지 {number}의 '{name}' 투입 시간은 0에서 168 사이로 입력해야 합니다.")
+        if len(rows) > 1 and ("+" in name or ACTIVITY_RE.match(name)):
+            raise ValueError(f"선택지 {number}의 활동 이름 '{name}'에는 '+'나 '(숫자)'를 쓸 수 없습니다.")
+        if name in names:
+            raise ValueError(f"선택지 {number}에 활동 '{name}'이 두 번 들어갔습니다.")
+        names.add(name)
+        activities.append((name, float(hours)))
+    if sum(hours for _, hours in activities) > 168:
+        raise ValueError(f"선택지 {number}의 활동 시간 합계가 일주일(168시간)을 넘습니다.")
+    return activities
+
+
 def build_scenarios(items: list) -> list:
-    """items: [{"scenario_option", "scenario_hours", "scenario_condition"}, ...]"""
+    """items: [{"activities": [{"name", "hours"}, ...], "scenario_condition"}, ...]
+    또는 이전 방식 [{"scenario_option", "scenario_hours", "scenario_condition"}, ...]"""
     if not 1 <= len(items) <= MAX_OPTIONS:
         raise ValueError(f"선택지는 1개에서 {MAX_OPTIONS}개까지 입력합니다.")
     scenarios = []
     seen = set()
     for number, item in enumerate(items, start=1):
-        option = (item.get("scenario_option") or "").strip()
-        hours = item.get("scenario_hours")
+        option, hours = encode_activities(activities_from_item(number, item))
         condition = (item.get("scenario_condition") or "").strip()
-        if not option:
-            raise ValueError(f"선택지 {number}의 이름을 입력해야 합니다.")
         if option in seen:
-            raise ValueError(f"선택지 이름 '{option}'이 두 번 들어갔습니다.")
-        if hours is None or not 0 <= hours <= 168:
-            raise ValueError(f"선택지 {number}의 투입 시간은 0에서 168 사이로 입력해야 합니다.")
+            raise ValueError(f"선택지 '{option}'이 두 번 들어갔습니다.")
         seen.add(option)
         scenarios.append(
             {"scenario_option": option, "scenario_hours": float(hours), "scenario_condition": condition}

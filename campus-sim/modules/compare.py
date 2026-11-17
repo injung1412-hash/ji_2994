@@ -22,13 +22,21 @@ def compare(rows: list, weekly_free_hours) -> dict:
     return {"rows": table, "warnings": warnings, "weekly_free_hours": float(weekly_free_hours)}
 
 
+def time_type(row: dict) -> str:
+    if row.get("all_study"):
+        return "📚 공부"
+    if row.get("study"):
+        return f"혼합 (📚 공부 {row['study_hours']:g}시간)"
+    return "공부 외 활동"
+
+
 def table_rows(table: dict) -> list:
     """화면에 보여 줄 비교표(같은 기준의 칸)."""
     return [
         {
             "선택지": row["scenario_option"],
             "투입 시간": f"{row['scenario_hours']:g}시간",
-            "시간 유형": "📚 공부" if row.get("study") else "공부 외 활동",
+            "시간 유형": time_type(row),
             "남는 자유 시간": f"{row['free_left']:g}시간",
             "보정 전 예상 학점": f"{row['base_gpa']:.2f}",
             "AI 보정": f"{row['adjust']:+.2f}" if row["ai_used"] else "AI 보정 없음",

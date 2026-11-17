@@ -60,6 +60,53 @@ def run_simulation() -> None:
     st.session_state.ai_status = result["ai_status"]
 
 
+def new_activity(name: str = "", hours=None) -> dict:
+    st.session_state.activity_seq = st.session_state.get("activity_seq", 0) + 1
+    return {"id": st.session_state.activity_seq, "name": name, "hours": hours}
+
+
+def load_draft() -> list:
+    """선택지 화면에서 입력 중인 내용(선택지마다 활동 목록 + 세부 조건)."""
+    if "draft" not in st.session_state:
+        st.session_state.draft = [
+            {
+                "acts": [
+                    new_activity(name, hours)
+                    for name, hours in scenario_mod.parse_activities(s["scenario_option"], s["scenario_hours"])
+                ],
+                "cond": s["scenario_condition"],
+            }
+            for s in st.session_state.scenarios
+        ]
+    return st.session_state.draft
+
+
+def ensure_draft(count: int) -> None:
+    draft = st.session_state.draft
+    while len(draft) < count:
+        draft.append({"acts": [new_activity(scenario_mod.SUGGESTED_OPTIONS[len(draft)])], "cond": ""})
+
+
+def sync_draft() -> None:
+    """화면 입력값을 draft에 옮겨 둡니다(활동을 추가 · 삭제하기 전에 호출)."""
+    for i, option in enumerate(st.session_state.draft):
+        for act in option["acts"]:
+            act["name"] = st.session_state.get(f"an_{act['id']}", act["name"])
+            act["hours"] = st.session_state.get(f"ah_{act['id']}", act["hours"])
+        option["cond"] = st.session_state.get(f"cond_{i}", option["cond"])
+
+
+def add_activity(i: int) -> None:
+    sync_draft()
+    st.session_state.draft[i]["acts"].append(new_activity())
+
+
+def remove_activity(i: int, activity_id: int) -> None:
+    sync_draft()
+    acts = st.session_state.draft[i]["acts"]
+    st.session_state.draft[i]["acts"] = [a for a in acts if a["id"] != activity_id]
+
+
 @st.dialog("선택한 기록을 지울까요?")
 def confirm_delete(indices: list, labels: list) -> None:
     st.write(f"아래 기록 {len(indices)}줄을 지웁니다. **지운 기록은 되돌릴 수 없습니다.**")
@@ -91,6 +138,7 @@ def confirm_clear() -> None:
         scenario_mod.clear_log()
         for key, default in [("profile", None), ("scenarios", []), ("table", None), ("ai_status", "")]:
             st.session_state[key] = default
+        st.session_state.pop("draft", None)
         st.session_state.delete_round = st.session_state.get("delete_round", 0) + 1
         go_to("🗂️ 기록 관리", "모든 기록을 지웠습니다. 처음부터 다시 시작할 수 있습니다.")
     if c2.button("취소", use_container_width=True):
@@ -189,7 +237,7 @@ elif menu == "👤 프로필":
 
 
 elif menu == "🔀 선택지":
-    ui.page_header("🔀", "STEP 2", "비교할 선택지", "선택지마다 주간 투입 시간과 세부 조건을 적습니다.")
+    ui.page_header("🔀", "STEP 2", "비교할 선택지", "선택지마다 활동과 주간 투입 시간, 세부 조건을 적습니다. 한 선택지에 활동을 여러 개 넣을 수 있습니다.")
     ui.stepper(1, done)
     profile = st.session_state.profile
     if not profile:
@@ -206,32 +254,59 @@ elif menu == "🔀 선택지":
             ("주간 자유 시간", f"{profile['weekly_free_hours']:g}시간"),
         ]
     )
-    saved = st.session_state.scenarios
-    count = st.radio("선택지 수", [1, 2, 3], index=len(saved) - 1 if saved else 2, horizontal=True)
-    with st.form("scenario_form"):
-        items = []
-        columns = st.columns(count)
-        for i in range(count):
-            old = saved[i] if i < len(saved) else {}
-            with columns[i].container(border=True):
-                ui.option_title(i, f"선택지 {i + 1}")
-                option = st.text_input(
-                    "선택지 이름", old.get("scenario_option", scenario_mod.SUGGESTED_OPTIONS[i]), key=f"opt{i}"
+    draft = load_draft()
+    count = st.radio("선택지 수", [1, 2, 3], index=min(len(st.session_state.scenarios) or 3, 3) - 1, horizontal=True)
+    ensure_draft(count)
+
+    items = []
+    for i in range(count):
+        option = draft[i]
+        acts = option["acts"]
+        with st.container(border=True):
+            ui.option_title(i, f"선택지 {i + 1}")
+            for j, act in enumerate(acts):
+                c1, c2, c3 = st.columns([5, 3, 1], vertical_alignment="bottom")
+                visibility = "visible" if j == 0 else "collapsed"
+                c1.text_input(
+                    "활동 이름", act["name"], key=f"an_{act['id']}", label_visibility=visibility,
+                    placeholder="예: 인턴 병행 · 공부 · 동아리",
                 )
-                hours = st.number_input(
-                    "주간 투입 시간", 0.0, 168.0, old.get("scenario_hours"), step=1.0, key=f"hrs{i}", placeholder="예: 15"
+                c2.number_input(
+                    "주간 시간", 0.0, 168.0, act["hours"], step=1.0, key=f"ah_{act['id']}",
+                    label_visibility=visibility, placeholder="예: 15",
                 )
-                condition = st.text_area(
-                    "세부 조건 (글)", old.get("scenario_condition", ""), key=f"cond{i}", height=110,
-                    placeholder="예: 주 3일 근무, 출퇴근 왕복 1시간, 시험 기간에도 근무",
+                c3.button(
+                    "🗑️", key=f"del_{act['id']}", on_click=remove_activity, args=(i, act["id"]),
+                    disabled=len(acts) == 1, help="이 활동 지우기", use_container_width=True,
                 )
-            items.append({"scenario_option": option, "scenario_hours": hours, "scenario_condition": condition})
-        submitted = st.form_submit_button("저장하고 시뮬레이션 실행 ▶", type="primary")
+            names = [st.session_state.get(f"an_{a['id']}") or "" for a in acts]
+            hours = [st.session_state.get(f"ah_{a['id']}") for a in acts]
+            total = sum(h for h in hours if h is not None)
+            study = sum(h for n, h in zip(names, hours) if h is not None and simulation_mod.is_study(n))
+            c1, c2 = st.columns([1, 2], vertical_alignment="center")
+            c1.button(
+                "➕ 활동 추가", key=f"add_{i}", on_click=add_activity, args=(i,),
+                disabled=len(acts) >= scenario_mod.MAX_ACTIVITIES, use_container_width=True,
+            )
+            ui.activity_total(c2, total, study, profile["weekly_free_hours"])
+            st.text_area(
+                "세부 조건 (글)", option["cond"], key=f"cond_{i}", height=80,
+                placeholder="예: 주 3일 근무, 출퇴근 왕복 1시간, 시험 기간에도 근무",
+            )
+        items.append(
+            {
+                "activities": [{"name": n, "hours": h} for n, h in zip(names, hours)],
+                "scenario_condition": st.session_state.get(f"cond_{i}", ""),
+            }
+        )
+    sync_draft()   # 다른 화면에 다녀와도 입력한 내용이 남도록
+    submitted = st.button("저장하고 시뮬레이션 실행 ▶", type="primary")
     ui.callout(
         "📚",
-        "선택지 이름에 <b>" + " · ".join(simulation_mod.STUDY_KEYWORDS) + "</b> 중 하나가 들어가면 "
-        "투입 시간을 <b>공부 시간</b>으로 보고, 시간을 늘릴수록 예상 학점이 오르게 계산합니다. "
-        "그 밖의 선택지(인턴 · 동아리 등)는 투입 시간만큼 공부할 시간이 줄어 예상 학점이 내려갑니다.",
+        "활동 이름에 <b>" + " · ".join(simulation_mod.STUDY_KEYWORDS) + "</b> 중 하나가 들어가면 "
+        "그 시간을 <b>공부 시간</b>으로 보고 시간을 늘릴수록 예상 학점이 오르게 계산합니다. "
+        "그 밖의 활동(인턴 · 동아리 등)은 투입 시간만큼 공부할 시간이 줄어 예상 학점이 내려갑니다. "
+        "예: <b>인턴 병행 15시간 + 공부 5시간</b>처럼 한 선택지에 활동을 섞을 수 있습니다.",
     )
     ui.callout("🤖", "세부 조건 글은 AI가 읽고 예상 학점을 ±0.3 안에서 보정하는 데 씁니다. 구체적으로 적을수록 보정 이유가 분명해집니다.")
     if submitted:

@@ -146,6 +146,10 @@ h1, h2, h3 { letter-spacing: -0.02em; }
 .cs-ticks span { position: absolute; transform: translateX(-50%); }
 .cs-note { font-size: 12px; color: var(--cs-muted); margin: 8px 0 0 122px; }
 
+.cs-total { font-size: 14px; color: var(--cs-fg-2); }
+.cs-total b { color: var(--cs-fg); }
+.cs-acts { margin: 10px 0 2px; display: flex; flex-direction: column; gap: 4px; }
+.cs-acts div { display: flex; justify-content: space-between; font-size: 13px; color: var(--cs-fg-2); }
 .cs-callout { display: flex; gap: 12px; align-items: flex-start; background: var(--cs-soft); border-radius: 14px; padding: 14px 16px;
   font-size: 14px; color: var(--cs-fg-2); margin: 8px 0 16px; }
 .cs-callout .e { font-size: 20px; line-height: 1.2; }
@@ -159,6 +163,11 @@ def inject_css() -> None:
 
 def html(markup: str) -> None:
     st.markdown(markup, unsafe_allow_html=True)
+
+
+def label(row: dict) -> str:
+    """화면에 보여 줄 선택지 이름(활동이 여러 개면 '인턴 병행 + 공부')."""
+    return row.get("label") or row["scenario_option"]
 
 
 def color(index: int) -> str:
@@ -238,6 +247,15 @@ def option_title(index: int, text: str) -> None:
     html(f'<div class="cs-opt-title"><span class="cs-dot" style="background:{color(index)}"></span>{escape(text)}</div>')
 
 
+def activity_total(container, total: float, study: float, free: float) -> None:
+    parts = [f"합계 <b>{fmt(total)}시간</b>"]
+    if study:
+        parts.append(f"📚 공부 {fmt(study)}시간")
+    if total > free:
+        parts.append(f'<span class="cs-pill warn">⚠️ 자유 시간 {fmt(free)}시간보다 {fmt(total - free)}시간 많음</span>')
+    container.markdown(f'<div class="cs-total">{" · ".join(parts)}</div>', unsafe_allow_html=True)
+
+
 def callout(emoji: str, text: str) -> None:
     html(f'<div class="cs-callout"><span class="e">{emoji}</span><div>{text}</div></div>')
 
@@ -253,17 +271,28 @@ def option_cards(table: dict) -> None:
             badges.append(f'<span class="cs-pill warn">⚠️ {fmt(-row["free_left"])}시간 부족</span>')
         else:
             badges.append('<span class="cs-pill ok">✓ 시간 안에 가능</span>')
-        if row.get("study"):
+        if row.get("all_study"):
             badges.append('<span class="cs-pill info">📚 공부 시간으로 계산</span>')
+        elif row.get("study"):
+            badges.append(f'<span class="cs-pill info">📚 공부 {fmt(row["study_hours"])}시간 포함</span>')
         if len(rows) > 1 and row["expected_gpa"] == top_gpa:
             badges.append('<span class="cs-pill info">예상 학점 가장 높음</span>')
         if len(rows) > 1 and row["free_left"] == top_free:
             badges.append('<span class="cs-pill info">남는 시간 가장 많음</span>')
         ai = f"{row['adjust']:+.2f}" if row["ai_used"] else "없음"
+        acts = row.get("activities") or []
+        breakdown = (
+            '<div class="cs-acts">' + "".join(
+                f'<div><span>{"📚 " if a["study"] else "· "}{escape(a["name"])}</span><span>{fmt(a["hours"])}시간</span></div>'
+                for a in acts
+            ) + "</div>"
+            if len(acts) > 1 else ""
+        )
         cards.append(
             f'<div class="cs-card" style="--c:{color(index)}">'
-            f'<div class="t"><span><span class="cs-dot" style="background:{color(index)}"></span>{escape(row["scenario_option"])}</span></div>'
+            f'<div class="t"><span><span class="cs-dot" style="background:{color(index)}"></span>{escape(label(row))}</span></div>'
             f'<div class="big">{row["expected_gpa"]:.2f}<small>예상 학점</small></div>'
+            + breakdown +
             f'<div class="kv"><span>주간 투입 시간</span><b>{fmt(row["scenario_hours"])}시간</b></div>'
             f'<div class="kv"><span>남는 자유 시간</span><b>{fmt(row["free_left"])}시간</b></div>'
             f'<div class="kv"><span>보정 전 → AI 보정</span><b>{row["base_gpa"]:.2f} · {ai}</b></div>'
@@ -291,7 +320,7 @@ def time_chart(table: dict) -> None:
         )
         lines.append(
             f'<div class="cs-row" title="{escape(row["scenario_option"])}: 투입 {fmt(hours)}시간, 남는 {fmt(row["free_left"])}시간">'
-            f'<div class="nm">{escape(row["scenario_option"])}</div><div>'
+            f'<div class="nm">{escape(label(row))}</div><div>'
             f'<div class="cs-track"><div class="bg"></div>'
             f'<div class="seg" style="left:0;width:{pct(used):.2f}%;background:{color(index)}"></div>'
             + (f'<div class="over" style="left:calc({pct(free):.2f}% + 2px);width:calc({pct(over):.2f}% - 2px)"></div>' if over else "")
@@ -331,7 +360,7 @@ def gpa_chart(table: dict, current_gpa: float) -> None:
         side = "left" if final > 80 else ""
         lines.append(
             f'<div class="cs-row" title="{escape(row["scenario_option"])}: 보정 전 {row["base_gpa"]:.2f} → 예상 {row["expected_gpa"]:.2f}">'
-            f'<div class="nm">{escape(row["scenario_option"])}</div><div class="cs-dots"><div class="ax"></div>'
+            f'<div class="nm">{escape(label(row))}</div><div class="cs-dots"><div class="ax"></div>'
             f'<div class="ref" style="left:{pos(current_gpa):.2f}%"></div>'
             + (
                 f'<div class="ln" style="left:{min(base, final):.2f}%;width:{abs(final - base):.2f}%;background:{color(index)}"></div>'
