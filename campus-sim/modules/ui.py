@@ -108,6 +108,8 @@ h1, h2, h3 { letter-spacing: -0.02em; }
 .cs-card .t { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-weight: 800; font-size: 17px; color: var(--cs-fg); }
 .cs-card .big { font-size: 40px; font-weight: 800; letter-spacing: -0.03em; color: var(--cs-fg); margin: 10px 0 0; line-height: 1.1; }
 .cs-card .big small { font-size: 13px; font-weight: 600; color: var(--cs-muted); margin-left: 6px; letter-spacing: 0; }
+.cs-card .rng { font-size: 13px; color: var(--cs-muted); margin-top: 4px; font-variant-numeric: tabular-nums; }
+.cs-dots .band { position: absolute; top: 11px; height: 10px; border-radius: 5px; opacity: .18; }
 .cs-card .kv { display: flex; justify-content: space-between; font-size: 14px; padding: 7px 0; border-top: 1px dashed var(--cs-line); color: var(--cs-fg-2); }
 .cs-card .kv:first-of-type { margin-top: 12px; }
 .cs-card .kv b { color: var(--cs-fg); font-variant-numeric: tabular-nums; }
@@ -292,10 +294,11 @@ def option_cards(table: dict) -> None:
             f'<div class="cs-card" style="--c:{color(index)}">'
             f'<div class="t"><span><span class="cs-dot" style="background:{color(index)}"></span>{escape(label(row))}</span></div>'
             f'<div class="big">{row["expected_gpa"]:.2f}<small>예상 학점</small></div>'
+            + (f'<div class="rng">예상 범위 {row["range"][0]:.2f} ~ {row["range"][1]:.2f}</div>' if row.get("range") else "")
             + breakdown +
             f'<div class="kv"><span>주간 투입 시간</span><b>{fmt(row["scenario_hours"])}시간</b></div>'
             f'<div class="kv"><span>남는 자유 시간</span><b>{fmt(row["free_left"])}시간</b></div>'
-            f'<div class="kv"><span>보정 전 → AI 보정</span><b>{row["base_gpa"]:.2f} · {ai}</b></div>'
+            f'<div class="kv"><span>계산식 · 내 기록 · AI</span><b>{row["base_gpa"]:.2f} · {row.get("personal_adjust", 0):+.2f} · {ai}</b></div>'
             f'<div class="cs-badges">{"".join(badges)}</div></div>'
         )
     html(f'<div class="cs-cards">{"".join(cards)}</div>')
@@ -352,7 +355,10 @@ def _ticks(lo: float, hi: float) -> str:
 
 def gpa_chart(table: dict, current_gpa: float) -> None:
     rows = table["rows"]
-    lo, hi = _axis([r["expected_gpa"] for r in rows] + [r["base_gpa"] for r in rows] + [current_gpa])
+    lo, hi = _axis(
+        [r["expected_gpa"] for r in rows] + [r["base_gpa"] for r in rows] + [current_gpa]
+        + [v for r in rows for v in r.get("range", ())]
+    )
     pos = lambda v: (min(max(v, lo), hi) - lo) / (hi - lo) * 100   # noqa: E731
     lines = []
     for index, row in enumerate(rows):
@@ -363,16 +369,20 @@ def gpa_chart(table: dict, current_gpa: float) -> None:
             f'<div class="nm">{escape(label(row))}</div><div class="cs-dots"><div class="ax"></div>'
             f'<div class="ref" style="left:{pos(current_gpa):.2f}%"></div>'
             + (
+                f'<div class="band" style="left:{pos(row["range"][0]):.2f}%;width:{pos(row["range"][1]) - pos(row["range"][0]):.2f}%;background:{color(index)}"></div>'
+                if row.get("range") else ""
+            )
+            + (
                 f'<div class="ln" style="left:{min(base, final):.2f}%;width:{abs(final - base):.2f}%;background:{color(index)}"></div>'
                 f'<div class="ring" style="left:{base:.2f}%;border-color:{color(index)}"></div>'
-                if row["ai_used"] and row["adjust"] else ""
+                if row["expected_gpa"] != row["base_gpa"] else ""
             )
             + f'<div class="pt" style="left:{final:.2f}%;background:{color(index)}"></div>'
             f'<div class="lb {side}" style="left:{final:.2f}%">{row["expected_gpa"]:.2f}</div></div></div>'
         )
     html(
         '<div class="cs-chart"><h4>🎯 예상 학점</h4>'
-        '<div class="cap">● 예상 학점 · ○ AI 보정 전 · 점선 = 현재 학점</div>'
+        '<div class="cap">● 예상 학점 · ○ 계산식(보정 전) · 옅은 띠 = 예상 범위 · 점선 = 현재 학점</div>'
         + "".join(lines) + _ticks(lo, hi)
         + f'<div class="cs-note">┆ 현재 학점 {fmt(current_gpa)}</div></div>'
     )
@@ -398,4 +408,73 @@ def history_chart(rows: list) -> None:
         '<div class="cs-chart"><h4>📏 예측 vs 실제</h4>'
         '<div class="cap">○ 계산식 예상 학점 · ● 실제 학점 · 숫자 = 예측 오차(실제 − 예상)</div>'
         + "".join(lines) + _ticks(lo, hi) + "</div>"
+    )
+
+
+def _term_key(term: str) -> tuple:
+    """'2026-2' 같은 학기를 시간 순서로 정렬하기 위한 키(숫자는 숫자로 비교)."""
+    import re
+    return tuple(int(part) if part.isdigit() else part for part in re.split(r"(\d+)", str(term)))
+
+
+def trend_chart(rows: list) -> None:
+    """학기별 추이: 계산식 예상 학점과 실제 학점(학기에 기록이 여러 줄이면 평균)."""
+    terms = {}
+    for row in rows:
+        terms.setdefault(row["term"], []).append(row)
+    order = sorted(terms, key=_term_key)
+    points = [
+        {
+            "term": term,
+            "pred": sum(r["predicted_gpa"] for r in terms[term]) / len(terms[term]),
+            "actual": sum(float(r["actual_gpa"]) for r in terms[term]) / len(terms[term]),
+            "n": len(terms[term]),
+        }
+        for term in order
+    ]
+    lo, hi = _axis([p["pred"] for p in points] + [p["actual"] for p in points])
+    width, height, left, right, top, bottom = 640, 250, 46, 60, 18, 52
+    x = lambda i: left + (width - left - right) * (0.5 if len(points) == 1 else i / (len(points) - 1))   # noqa: E731
+    y = lambda v: top + (height - top - bottom) * (1 - (v - lo) / (hi - lo))   # noqa: E731
+    grid = "".join(
+        f'<line x1="{left}" x2="{width - right}" y1="{y(lo + (hi - lo) * t):.1f}" y2="{y(lo + (hi - lo) * t):.1f}" stroke="#e2e8f0"/>'
+        f'<text x="{left - 8}" y="{y(lo + (hi - lo) * t) + 4:.1f}" text-anchor="end" font-size="11" fill="#64748b">{lo + (hi - lo) * t:.2f}</text>'
+        for t in (0, 0.25, 0.5, 0.75, 1)
+    )
+
+    def series(key: str, color_: str, dashed: bool, filled: bool, name: str) -> str:
+        path = " ".join(f"{'M' if i == 0 else 'L'}{x(i):.1f},{y(p[key]):.1f}" for i, p in enumerate(points))
+        line = (
+            f'<path d="{path}" fill="none" stroke="{color_}" stroke-width="2"{" stroke-dasharray=\"5 4\"" if dashed else ""}/>'
+            if len(points) > 1 else ""
+        )
+        dots = "".join(
+            f'<circle cx="{x(i):.1f}" cy="{y(p[key]):.1f}" r="5" fill="{color_ if filled else "#fff"}" stroke="{color_}" stroke-width="2">'
+            f'<title>{escape(p["term"])} {name} {p[key]:.2f}</title></circle>'
+            for i, p in enumerate(points)
+        )
+        return line + dots
+
+    labels = "".join(
+        f'<text x="{x(i):.1f}" y="{height - bottom + 20}" text-anchor="middle" font-size="12" font-weight="700" fill="#0f172a">{escape(p["term"])}</text>'
+        f'<text x="{x(i):.1f}" y="{height - bottom + 37}" text-anchor="middle" font-size="11" fill="#64748b">오차 {p["actual"] - p["pred"]:+.2f}</text>'
+        for i, p in enumerate(points)
+    )
+    last = points[-1]
+    tags = (
+        f'<text x="{x(len(points) - 1) + 9:.1f}" y="{y(last["actual"]) + 4:.1f}" font-size="12" font-weight="700" fill="#3b5bdb">{last["actual"]:.2f}</text>'
+        f'<text x="{x(len(points) - 1) + 9:.1f}" y="{y(last["pred"]) + 4:.1f}" font-size="12" fill="#64748b">{last["pred"]:.2f}</text>'
+    )
+    svg = (
+        f'<svg viewBox="0 0 {width} {height}" width="100%" role="img" aria-label="학기별 계산식 예상 학점과 실제 학점 추이">'
+        + grid + series("pred", "#94a3b8", True, False, "계산식 예상") + series("actual", "#3b5bdb", False, True, "실제")
+        + labels + tags + "</svg>"
+    )
+    note = "" if len(points) > 1 else '<div class="cs-note" style="margin-left:0">학기 기록이 2개 이상 쌓이면 선으로 이어져 추이가 보입니다.</div>'
+    html(
+        '<div class="cs-chart"><h4>📈 학기별 추이</h4>'
+        '<div class="cap">학기마다 계산식 예상 학점과 실제 학점을 비교합니다. 한 학기에 기록이 여러 줄이면 평균입니다.</div>'
+        '<div class="cs-legend" style="margin-top:-14px"><span><span class="cs-dot" style="background:#3b5bdb"></span>실제 학점</span>'
+        '<span><span class="cs-dot" style="background:#fff;border:2px solid #94a3b8"></span>계산식 예상 학점(점선)</span></div>'
+        + svg + note + "</div>"
     )

@@ -39,8 +39,10 @@ def table_rows(table: dict) -> list:
             "시간 유형": time_type(row),
             "남는 자유 시간": f"{row['free_left']:g}시간",
             "보정 전 예상 학점": f"{row['base_gpa']:.2f}",
+            "내 기록 보정": f"{row.get('personal_adjust', 0):+.2f}",
             "AI 보정": f"{row['adjust']:+.2f}" if row["ai_used"] else "AI 보정 없음",
             "예상 학점": f"{row['expected_gpa']:.2f}",
+            "예상 범위": f"{row['range'][0]:.2f} ~ {row['range'][1]:.2f}" if row.get("range") else "—",
             "시간 상태": "⚠️ 시간 부족" if row["short"] else "시간 안에 가능",
         }
         for row in table["rows"]

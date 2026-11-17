@@ -153,6 +153,69 @@ class SimulationTest(unittest.TestCase):
         self.assertNotIn("학번", text)
 
 
+class CorrectionRangeTest(unittest.TestCase):
+    @staticmethod
+    def past(*errors):
+        return [{"term": "2026-1", "scenario_option": "인턴", "scenario_hours": "10", "scenario_condition": "",
+                 "actual_gpa": "3.5", "satisfaction": "3", "user_review": "x", "predicted_gpa": 3.8, "error": e}
+                for e in errors]
+
+    def test_no_past_records_no_correction(self):
+        self.assertEqual(simulation.personal_correction([])["value"], 0)
+        row = simulation.run(PROFILE, plans(15), ask=no_ai)["rows"][0]
+        self.assertEqual((row["personal_adjust"], row["expected_gpa"], row["range"]), (0, 3.7, (3.4, 4.0)))
+
+    def test_correction_is_shrunk_by_record_count(self):
+        # 1건 −0.3 → 1/3만 반영 = −0.1, 2건 평균 −0.3 → 1/2 = −0.15
+        self.assertEqual(simulation.personal_correction(self.past(-0.3))["value"], -0.1)
+        self.assertEqual(simulation.personal_correction(self.past(-0.3, -0.3))["value"], -0.15)
+        # 한계 ±0.3
+        self.assertEqual(simulation.personal_correction(self.past(*[-2.0] * 8))["value"], -0.3)
+
+    def test_correction_applies_without_ai_and_before_ai(self):
+        result = simulation.run(PROFILE, plans(15), self.past(-0.3), ask=no_ai)
+        row = result["rows"][0]
+        self.assertEqual((row["base_gpa"], row["personal_adjust"], row["expected_gpa"]), (3.7, -0.1, 3.6))
+        answer = '{"results": [{"scenario_option": "인턴 병행", "adjust": 0.1, "reason": "x"}]}'
+        row = simulation.run(PROFILE, plans(15), self.past(-0.3), ask=lambda _: answer)["rows"][0]
+        self.assertEqual(row["expected_gpa"], 3.7)   # 3.7 − 0.1(내 기록) + 0.1(AI)
+
+    def test_range_uses_default_until_three_records(self):
+        self.assertEqual(simulation.prediction_range(self.past(-0.3, -0.1), {"value": -0.1})["width"], 0.3)
+        # 3건 이상: 보정 뒤 남은 오차 평균, 최소 0.1
+        span = simulation.prediction_range(self.past(-0.2, -0.2, -0.2), {"value": -0.12})
+        self.assertEqual(span["width"], 0.1)
+        span = simulation.prediction_range(self.past(-0.6, 0.0, 0.3), {"value": -0.06})
+        self.assertEqual(span["width"], 0.32)
+
+    def test_report_and_table_show_range(self):
+        table = compare.compare(simulation.run(PROFILE, plans(15), ask=no_ai)["rows"], 25)
+        self.assertEqual(compare.table_rows(table)[0]["예상 범위"], "3.40 ~ 4.00")
+        self.assertIn("범위 3.40~4.00", report.make_report(table))
+
+
+class ActivityTypeTest(unittest.TestCase):
+    def test_override_marks_only_when_different(self):
+        self.assertEqual(scenario.mark_name("토익", True), "[공부] 토익")
+        self.assertEqual(scenario.mark_name("시험 감독 알바", False), "[공부 외] 시험 감독 알바")
+        self.assertEqual(scenario.mark_name("공부", True), "공부")          # 자동 판단과 같으면 표시 없음
+        self.assertEqual(scenario.mark_name("인턴", None), "인턴")
+        self.assertTrue(scenario.is_study("[공부] 토익"))
+        self.assertFalse(scenario.is_study("[공부 외] 시험 감독 알바"))
+        self.assertEqual(scenario.split_mark("[공부] 토익"), ("토익", True))
+
+    def test_override_changes_gpa_and_survives_save(self):
+        built = scenario.build_scenarios(
+            [{"activities": [{"name": "토익", "hours": 10, "study": True}, {"name": "시험 감독 알바", "hours": 5, "study": False}]}]
+        )[0]
+        self.assertEqual(built["scenario_option"], "[공부] 토익(10) + [공부 외] 시험 감독 알바(5)")
+        row = simulation.calculate(PROFILE, built)
+        self.assertEqual(row["label"], "토익 + 시험 감독 알바")
+        self.assertEqual([a["study"] for a in row["activities"]], [True, False])
+        # 3.8 + (25 − 5 − 15)×0.02 + 10×0.01 = 4.0
+        self.assertEqual(row["base_gpa"], 4.0)
+
+
 class CompareReportTest(unittest.TestCase):
     def table(self, *hours):
         return compare.compare(simulation.run(PROFILE, plans(*hours), ask=no_ai)["rows"], 25)

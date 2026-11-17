@@ -8,7 +8,7 @@ import json
 import re
 from pathlib import Path
 
-from modules.scenario import parse_activities
+from modules.scenario import STUDY_KEYWORDS, is_study, parse_activities, split_mark   # noqa: F401
 
 try:
     import anthropic
@@ -25,15 +25,25 @@ HOUR_WEIGHT = 0.02      # 남는 시간 1시간당 학점 변화
 BASE_CREDITS = 18       # 기준 수강 학점
 CREDIT_WEIGHT = 0.01    # 기준보다 1학점 많을 때 학점 변화
 STUDY_WEIGHT = 0.01     # 공부 시간 1시간당 학점 변화 (공부형 선택지에만 적용)
-STUDY_KEYWORDS = ("공부", "학점", "스터디", "복습", "예습", "시험", "과제")   # 이름에 있으면 공부형
 GPA_MIN, GPA_MAX = 0.0, 4.5
 AI_LIMIT = 0.3          # AI 보정 폭 한계
 NO_AI = "AI 보정 없음"
 
+# 내 기록 보정: 지난 학기 예측 오차(실제 − 계산식)의 평균을 기록 수에 따라 일부만 반영합니다.
+PERSONAL_PRIOR = 2      # 반영 비율 = 기록 수 / (기록 수 + 2) → 1건 1/3, 2건 1/2, 8건 4/5
+PERSONAL_LIMIT = 0.3    # 내 기록 보정 폭 한계
+# 예상 범위: 기록이 3건 미만이면 기본 폭, 3건 이상이면 보정 뒤 남은 오차의 평균(최소 0.1)
+RANGE_DEFAULT = 0.3
+RANGE_MIN = 0.1
+RANGE_MIN_RECORDS = 3
+
 SYSTEM_PROMPT = """당신은 대학생의 학기 선택지별 예상 학점을 보정하는 도우미입니다.
-입력 JSON에는 계산식으로 구한 '보정 전 예상 학점'과 선택지별 세부 조건 글, 지난 학기 기록이 있습니다.
+입력 JSON에는 계산식으로 구한 '보정 전 예상 학점', 지난 학기 예측 오차로 조정한 '내 기록 보정 후 예상 학점',
+선택지별 세부 조건 글, 지난 학기 기록이 있습니다. 보정 값은 '내 기록 보정 후 예상 학점'에 더해집니다.
 계산식은 투입 시간과 시간 유형만 보고 세부 조건 글과 지난 학기 경험은 반영하지 못합니다. 이 글을 읽고 보정 값을 정하세요.
 활동 구성에서 유형이 '공부'인 시간은 계산식이 이미 그만큼 학점을 올려 두었으니, 같은 이유로 또 올리지 마세요.
+지난 학기 예측 오차의 크기는 이미 '내 기록 보정'으로 반영했으니, 오차 숫자만 보고 또 보정하지 말고
+지난 학기 세부 조건과 자유 평가의 내용(무엇이 힘들었고 무엇이 잘됐는지)을 이번 선택지와 비교해 판단하세요.
 
 규칙:
 - 선택지마다 adjust(보정 값)를 -0.3에서 0.3 사이의 숫자로 정합니다. 근거가 없으면 0입니다.
@@ -56,15 +66,10 @@ def free_left(weekly_free_hours, scenario_hours) -> float:
     return float(weekly_free_hours) - float(scenario_hours)
 
 
-def is_study(scenario_option) -> bool:
-    """선택지 이름에 공부 관련 단어가 있으면 공부형입니다."""
-    return any(word in str(scenario_option or "") for word in STUDY_KEYWORDS)
-
-
 def split_hours(scenario_option, scenario_hours) -> tuple:
     """(활동 목록, 공부 시간 합, 공부 외 시간 합). 활동: [{"name", "hours", "study"}, ...]"""
     activities = [
-        {"name": name, "hours": hours, "study": is_study(name)}
+        {"name": split_mark(name)[0], "hours": hours, "study": is_study(name)}
         for name, hours in parse_activities(scenario_option, scenario_hours)
     ]
     study = sum(a["hours"] for a in activities if a["study"])
@@ -107,13 +112,43 @@ def base_gpa(current_gpa, course_credits, weekly_free_hours, scenario_hours, sce
     return value, evidence
 
 
-def calculate(profile: dict, scenario: dict) -> dict:
+def personal_correction(past_records: list) -> dict:
+    """지난 학기 예측 오차로 이번 예측을 얼마나 조정할지 정합니다(AI 없이도 동작)."""
+    errors = [float(record["error"]) for record in past_records if record.get("error") is not None]
+    count = len(errors)
+    if not count:
+        return {"value": 0.0, "count": 0, "mean_error": None, "text": "지난 학기 기록이 없어 내 기록 보정은 0입니다."}
+    mean = sum(errors) / count
+    weight = count / (count + PERSONAL_PRIOR)
+    value = round(max(-PERSONAL_LIMIT, min(PERSONAL_LIMIT, mean * weight)), 2)
+    text = (
+        f"지난 학기 기록 {count}건의 예측 오차 평균 {mean:+.2f} × 반영 비율 {count}/{count + PERSONAL_PRIOR}"
+        f" = {value:+.2f}" + (f" (±{PERSONAL_LIMIT}로 제한)" if abs(mean * weight) > PERSONAL_LIMIT else "")
+    )
+    return {"value": value, "count": count, "mean_error": round(mean, 2), "text": text}
+
+
+def prediction_range(past_records: list, correction: dict) -> dict:
+    """예상 학점에 붙일 범위의 폭(±)."""
+    errors = [float(record["error"]) for record in past_records if record.get("error") is not None]
+    if len(errors) < RANGE_MIN_RECORDS:
+        return {
+            "width": RANGE_DEFAULT,
+            "text": f"기록이 {RANGE_MIN_RECORDS}건 미만이라 기본 폭 ±{RANGE_DEFAULT}을 씁니다(검증 전 가정).",
+        }
+    left = sum(abs(error - correction["value"]) for error in errors) / len(errors)
+    width = round(max(RANGE_MIN, left), 2)
+    return {"width": width, "text": f"내 기록으로 보정한 뒤 남은 오차의 평균 ±{width}를 씁니다(최소 ±{RANGE_MIN})."}
+
+
+def calculate(profile: dict, scenario: dict, correction: float = 0.0) -> dict:
     hours = float(scenario["scenario_hours"])
     value, evidence = base_gpa(
         profile["current_gpa"], profile["course_credits"], profile["weekly_free_hours"], hours,
         scenario["scenario_option"],
     )
     activities, study_hours, _ = split_hours(scenario["scenario_option"], hours)
+    corrected = round(clamp_gpa(value + correction), 2)
     return {
         "scenario_option": scenario["scenario_option"],
         "label": " + ".join(a["name"] for a in activities),
@@ -126,11 +161,20 @@ def calculate(profile: dict, scenario: dict) -> dict:
         "free_left": free_left(profile["weekly_free_hours"], hours),
         "base_gpa": value,
         "evidence": evidence,
+        "personal_adjust": round(correction, 2),
+        "corrected_gpa": corrected,
         "adjust": None,
-        "expected_gpa": value,
+        "expected_gpa": corrected,
         "ai_used": False,
         "reason": NO_AI,
     }
+
+
+def apply_range(rows: list, width: float) -> list:
+    for row in rows:
+        row["range_width"] = width
+        row["range"] = (round(clamp_gpa(row["expected_gpa"] - width), 2), round(clamp_gpa(row["expected_gpa"] + width), 2))
+    return rows
 
 
 def past_text(record: dict) -> dict:
@@ -169,9 +213,11 @@ def build_ai_input(profile: dict, rows: list, past_records: list) -> str:
                 "남는 자유 시간": row["free_left"],
                 "세부 조건": row["scenario_condition"] or "(없음)",
                 "보정 전 예상 학점": row["base_gpa"],
+                "내 기록 보정 후 예상 학점": row["corrected_gpa"],
             }
             for row in rows
         ],
+        "내 기록 보정": personal_correction(past_records)["text"],
         "지난 학기 기록": [past_text(record) for record in past_records] or "없음(첫 학기)",
     }
     return json.dumps(data, ensure_ascii=False, indent=2)
@@ -241,25 +287,30 @@ def apply_ai(rows: list, answers: dict) -> list:
             row["reason"] = f"{NO_AI} (AI 보정 값 {adjust:+g}이 ±{AI_LIMIT}를 벗어나 버렸습니다)"
             continue
         row["adjust"] = round(adjust, 2)
-        row["expected_gpa"] = round(clamp_gpa(row["base_gpa"] + adjust), 2)
+        row["expected_gpa"] = round(clamp_gpa(row["corrected_gpa"] + adjust), 2)
         row["ai_used"] = True
         row["reason"] = reason or "AI가 이유를 적지 않았습니다."
     return rows
 
 
 def run(profile: dict, scenarios: list, past_records: list = None, ask=None) -> dict:
-    """ask: 테스트할 때 AI 대신 넣는 함수. 비워 두면 Claude에게 묻습니다."""
-    rows = [calculate(profile, scenario) for scenario in scenarios]
+    """계산식 → 내 기록 보정 → AI 보정(±0.3) → 예상 범위. ask: 테스트할 때 AI 대신 넣는 함수."""
     past_records = past_records or []
+    correction = personal_correction(past_records)
+    span = prediction_range(past_records, correction)
+    rows = [calculate(profile, scenario, correction["value"]) for scenario in scenarios]
     ask = ask or ask_claude
+    extra = {"past_count": len(past_records), "personal": correction, "range": span}
     try:
         answers = parse_ai(ask(build_ai_input(profile, rows, past_records)))
     except Exception as error:   # AI가 어떤 이유로 실패해도 계산식 결과는 보여 줍니다 (F12)
         for row in rows:
             row["reason"] = f"{NO_AI} ({error})"
-        return {"rows": rows, "ai_status": f"{NO_AI}: {error}. 계산식 결과를 보여 줍니다.", "past_count": len(past_records)}
+        apply_range(rows, span["width"])
+        return {"rows": rows, "ai_status": f"{NO_AI}: {error}. 계산식 결과를 보여 줍니다.", **extra}
     apply_ai(rows, answers)
+    apply_range(rows, span["width"])
     used = sum(row["ai_used"] for row in rows)
     status = f"AI가 선택지 {len(rows)}개 중 {used}개를 보정했습니다."
     status += f" 지난 학기 기록 {len(past_records)}건을 함께 읽었습니다." if past_records else " 첫 학기라 세부 조건 글만 읽었습니다."
-    return {"rows": rows, "ai_status": status, "past_count": len(past_records)}
+    return {"rows": rows, "ai_status": status, **extra}

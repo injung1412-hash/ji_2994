@@ -16,10 +16,12 @@ def best_rows(rows: list, key: str) -> list:
 
 def option_line(row: dict) -> str:
     ai = f"AI 보정 {row['adjust']:+.2f}" if row["ai_used"] else "AI 보정 없음"
+    personal = f", 내 기록 보정 {row['personal_adjust']:+.2f}" if row.get("personal_adjust") else ""
+    span = f" · 범위 {row['range'][0]:.2f}~{row['range'][1]:.2f}" if row.get("range") else ""
     line = (
         f"- **{row['scenario_option']}** (주 {row['scenario_hours']:g}시간): "
-        f"남는 자유 시간 {row['free_left']:g}시간, 예상 학점 {row['expected_gpa']:.2f} "
-        f"(보정 전 {row['base_gpa']:.2f}, {ai})"
+        f"남는 자유 시간 {row['free_left']:g}시간, 예상 학점 {row['expected_gpa']:.2f}{span} "
+        f"(보정 전 {row['base_gpa']:.2f}{personal}, {ai})"
     )
     if row.get("all_study"):
         line += " — 📚 공부 시간으로 계산"
