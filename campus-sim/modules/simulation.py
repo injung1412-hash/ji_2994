@@ -170,6 +170,45 @@ def calculate(profile: dict, scenario: dict, correction: float = 0.0) -> dict:
     }
 
 
+def gpa_for(profile: dict, other: float, study: float, correction: float = 0.0, exact: bool = False) -> float:
+    """공부 외 시간 · 공부 시간이 주어졌을 때 계산식 + 내 기록 보정 예상 학점(AI 보정 제외).
+    exact=True면 반올림하지 않은 값(목표 비교용)을 돌려줍니다."""
+    gpa, credits, free = float(profile["current_gpa"]), float(profile["course_credits"]), float(profile["weekly_free_hours"])
+    counted = min(study, max(free - other, 0.0))
+    raw = gpa + (free - other - free * SPARE_RATIO) * HOUR_WEIGHT + counted * STUDY_WEIGHT - (credits - BASE_CREDITS) * CREDIT_WEIGHT
+    value = clamp_gpa(raw + correction)
+    return value if exact else round(value, 2)
+
+
+TARGET_STEP = 0.5   # 목표 학점 역산 시간 단위
+
+
+def target_plan(profile: dict, row: dict, target: float, correction: float = 0.0) -> dict:
+    """목표 학점을 넘으려면 공부 외 시간은 최대 몇 시간, 공부 시간은 최소 몇 시간인지 거꾸로 계산합니다.
+    시간에 따라 다시 계산할 수 없는 AI 보정은 빼고, 계산식 + 내 기록 보정으로만 계산합니다."""
+    other = sum(a["hours"] for a in row["activities"] if not a["study"])
+    study = sum(a["hours"] for a in row["activities"] if a["study"])
+    free = float(profile["weekly_free_hours"])
+    grid = [i * TARGET_STEP for i in range(int(168 / TARGET_STEP) + 1)]
+    reach = lambda value: value >= target - 1e-9   # noqa: E731  (반올림 전 값으로 비교)
+    now = gpa_for(profile, other, study, correction)
+    now_exact = gpa_for(profile, other, study, correction, exact=True)
+    max_other = None
+    if other > 0:
+        allowed = [hours for hours in grid if reach(gpa_for(profile, hours, study, correction, exact=True))]
+        max_other = max(allowed) if allowed else -1.0          # -1: 공부 외 활동을 0으로 줄여도 부족
+    study_limit = max(free - other, 0.0)
+    needed = [
+        hours for hours in grid
+        if hours <= study_limit + 1e-9 and reach(gpa_for(profile, other, hours, correction, exact=True))
+    ]
+    return {
+        "target": target, "now": now, "ok": reach(now_exact), "gap": round(target - now_exact, 2),
+        "other": other, "study": study, "max_other": max_other,
+        "min_study": min(needed) if needed else None, "study_limit": study_limit,
+    }
+
+
 def apply_range(rows: list, width: float) -> list:
     for row in rows:
         row["range_width"] = width

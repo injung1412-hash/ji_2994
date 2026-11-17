@@ -148,6 +148,9 @@ h1, h2, h3 { letter-spacing: -0.02em; }
 .cs-ticks span { position: absolute; transform: translateX(-50%); }
 .cs-note { font-size: 12px; color: var(--cs-muted); margin: 8px 0 0 122px; }
 
+.cs-target .kv { flex-direction: column; gap: 2px; }
+.cs-target .kv .v { color: var(--cs-fg); }
+.cs-target .t { align-items: flex-start; }
 .cs-total { font-size: 14px; color: var(--cs-fg-2); }
 .cs-total b { color: var(--cs-fg); }
 .cs-acts { margin: 10px 0 2px; display: flex; flex-direction: column; gap: 4px; }
@@ -477,4 +480,78 @@ def trend_chart(rows: list) -> None:
         '<div class="cs-legend" style="margin-top:-14px"><span><span class="cs-dot" style="background:#3b5bdb"></span>실제 학점</span>'
         '<span><span class="cs-dot" style="background:#fff;border:2px solid #94a3b8"></span>계산식 예상 학점(점선)</span></div>'
         + svg + note + "</div>"
+    )
+
+
+def _target_lines(plan: dict) -> str:
+    if plan["max_other"] is None:
+        other = "공부 외 활동 없음"
+    elif plan["max_other"] < 0:
+        other = "공부 외 활동을 모두 빼도 목표에 못 미칩니다"
+    else:
+        diff = plan["other"] - plan["max_other"]
+        other = f"주 <b>{fmt(plan['max_other'])}시간</b>까지 (지금 {fmt(plan['other'])}시간" + (
+            f" → <b>{fmt(diff)}시간 줄이기</b>)" if diff > 0 else ", 여유 있음)"
+        )
+    if plan["min_study"] is None:
+        study = f"남은 자유 시간 {fmt(plan['study_limit'])}시간을 모두 공부해도 목표에 못 미칩니다"
+    else:
+        more = plan["min_study"] - plan["study"]
+        study = f"주 <b>{fmt(plan['min_study'])}시간</b> 이상 (지금 {fmt(plan['study'])}시간" + (
+            f" → <b>{fmt(more)}시간 늘리기</b>)" if more > 0 else ", 충분함)"
+        ) if plan["min_study"] > 0 else f"공부를 따로 하지 않아도 목표에 닿습니다 (지금 {fmt(plan['study'])}시간)"
+    return (
+        f'<div class="kv"><span>공부 외 활동 한도</span><span class="v">{other}</span></div>'
+        f'<div class="kv"><span>필요한 공부 시간</span><span class="v">{study}</span></div>'
+    )
+
+
+def target_cards(items: list) -> None:
+    """items: [(이름, 색 번호, target_plan 결과), ...]"""
+    cards = []
+    for name, index, plan in items:
+        pill = (
+            '<span class="cs-pill ok">✓ 목표 달성 예상</span>' if plan["ok"]
+            else f'<span class="cs-pill warn">✗ {fmt(plan["gap"])} 부족</span>'
+        )
+        cards.append(
+            f'<div class="cs-card cs-target" style="--c:{color(index)}">'
+            f'<div class="t"><span><span class="cs-dot" style="background:{color(index)}"></span>{escape(name)}</span>{pill}</div>'
+            f'<div class="rng">지금 계획 예상 {plan["now"]:.2f} → 목표 {plan["target"]:.2f}</div>'
+            + _target_lines(plan) + "</div>"
+        )
+    html(f'<div class="cs-cards">{"".join(cards)}</div>')
+
+
+def compare_plan(plan_row: dict, now_row: dict) -> None:
+    """학기 중 점검: 계획과 지금 상황을 나란히 보여 줍니다."""
+    delta = now_row["expected_gpa"] - plan_row["expected_gpa"]
+    tone = "ok" if delta >= 0 else "warn"
+    sign = "▲" if delta > 0 else ("▼" if delta < 0 else "＝")
+
+    def card(title: str, row: dict, accent: str) -> str:
+        acts = "".join(
+            f'<div><span>{"📚 " if a["study"] else "· "}{escape(a["name"])}</span><span>{fmt(a["hours"])}시간</span></div>'
+            for a in row["activities"]
+        )
+        status = (
+            f'<span class="cs-pill warn">⚠️ {fmt(-row["free_left"])}시간 부족</span>' if row["free_left"] < 0
+            else '<span class="cs-pill ok">✓ 시간 안에 가능</span>'
+        )
+        return (
+            f'<div class="cs-card" style="--c:{accent}"><div class="t"><span>{title}</span>{status}</div>'
+            f'<div class="big">{row["expected_gpa"]:.2f}<small>예상 학점</small></div>'
+            f'<div class="cs-acts">{acts}</div>'
+            f'<div class="kv"><span>주간 투입 시간</span><b>{fmt(row["scenario_hours"])}시간</b></div>'
+            f'<div class="kv"><span>남는 자유 시간</span><b>{fmt(row["free_left"])}시간</b></div></div>'
+        )
+
+    html(
+        '<div class="cs-cards">'
+        + card("📋 학기 초 계획", plan_row, "#94a3b8")
+        + card("⏱️ 지금 상황", now_row, "#3b5bdb")
+        + f'<div class="cs-card cs-delta"><div class="t"><span>변화</span></div>'
+        f'<div class="big"><span class="cs-pill {tone}" style="font-size:22px;padding:6px 14px">{sign} {delta:+.2f}</span></div>'
+        f'<div class="rng">예상 학점 {plan_row["expected_gpa"]:.2f} → {now_row["expected_gpa"]:.2f}</div></div>'
+        "</div>"
     )
