@@ -454,7 +454,7 @@
         <li><b>1</b><div><strong>학기 초 계획</strong><br><span class="muted">선택지마다 한 줄씩 기록하고 실제 결과 칸은 비워 둡니다.</span></div></li>
         <li><b>2</b><div><strong>학기 말 결과</strong><br><span class="muted">실제로 고른 선택지 줄에만 실제 학점 · 만족도 · 후기를 채웁니다.</span></div></li>
         <li><b>3</b><div><strong>예측 오차 확인</strong><br><span class="muted">오차 = 실제 학점 − 저장된 입력으로 다시 계산한 예상 학점.</span></div></li>
-        <li><b>4</b><div><strong>다음 학기 반영</strong><br><span class="muted">지난 학기 기록이 다음 시뮬레이션의 AI 입력으로 넘어갑니다.</span></div></li>
+        <li><b>4</b><div><strong>다음 학기 반영</strong><br><span class="muted">지난 예측 오차의 평균만큼 다음 예측을 자동 보정하고(내 기록 보정), 학기별 추이 차트로 정확도 변화를 보여 줍니다.</span></div></li>
       </ul>
     </div>
     <svg viewBox="0 0 440 440" role="img" aria-label="학기 초 계획, 학기 말 결과, 예측 오차, 다음 학기 반영이 순환하는 그림">
@@ -554,7 +554,7 @@
     <div class="faq">
       <details open>
         <summary>예측 학점을 믿어도 되나요?</summary>
-        <div>비교를 돕는 추정치이며 결과를 보장하지 않습니다. 계산식의 기준값은 아직 실제 기록으로 검증하지 않은 가정이라, 학기 말 기록을 쌓아 예측 오차로 확인하는 것을 전제로 합니다. 결정은 시스템이 아니라 내가 합니다.</div>
+        <div>비교를 돕는 추정치이며 결과를 보장하지 않습니다. 그래서 숫자 하나 대신 <b>예상 범위</b>(예: 3.45~4.05)를 함께 보여 주고, 학기 말 기록이 쌓이면 지난 예측 오차만큼 <b>내 기록 보정</b>을 해서 나에게 맞춰 갑니다(AI 없이도 동작). 계산식의 기준값은 아직 실제 기록으로 검증하지 않은 가정이라, 학기 말 기록을 쌓아 예측 오차로 확인하는 것을 전제로 합니다. 결정은 시스템이 아니라 내가 합니다.</div>
       </details>
       <details>
         <summary>웹 버전에서는 왜 AI 보정이 안 되나요?</summary>

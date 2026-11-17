@@ -18,6 +18,40 @@ MAX_ACTIVITIES = 5          # 한 선택지 안의 활동 수
 ACTIVITY_JOIN = " + "
 ACTIVITY_RE = re.compile(r"^(.+?)\((\d+(?:\.\d+)?)\)$")
 
+# 활동 유형: 이름에 아래 단어가 있으면 공부 시간으로 봅니다(자동).
+# 자동 판단과 다르게 고르면 이름 앞에 표시를 붙여 저장합니다(칸을 늘리지 않습니다).
+STUDY_KEYWORDS = ("공부", "학점", "스터디", "복습", "예습", "시험", "과제")
+STUDY_MARK = "[공부] "
+OTHER_MARK = "[공부 외] "
+
+
+def split_mark(name) -> tuple:
+    """'[공부] 토익' → ('토익', True), '[공부 외] 시험 감독' → ('시험 감독', False), 표시 없으면 (이름, None)"""
+    name = str(name or "")
+    if name.startswith(STUDY_MARK):
+        return name[len(STUDY_MARK):].strip(), True
+    if name.startswith(OTHER_MARK):
+        return name[len(OTHER_MARK):].strip(), False
+    return name.strip(), None
+
+
+def keyword_study(name) -> bool:
+    return any(word in str(name or "") for word in STUDY_KEYWORDS)
+
+
+def is_study(name) -> bool:
+    """직접 고른 유형이 있으면 그것을, 없으면 이름의 단어로 공부 시간인지 판단합니다."""
+    clean, forced = split_mark(name)
+    return keyword_study(clean) if forced is None else forced
+
+
+def mark_name(name: str, study=None) -> str:
+    """직접 고른 유형이 자동 판단과 다를 때만 이름 앞에 표시를 붙입니다."""
+    clean, _ = split_mark(name)
+    if study is None or bool(study) == keyword_study(clean):
+        return clean
+    return (STUDY_MARK if study else OTHER_MARK) + clean
+
 
 def number_text(value) -> str:
     return f"{float(value):g}"
@@ -54,7 +88,8 @@ def activities_from_item(number: int, item: dict) -> list:
         raise ValueError(f"선택지 {number}에는 활동을 1개에서 {MAX_ACTIVITIES}개까지 넣을 수 있습니다.")
     activities, names = [], set()
     for row in rows:
-        name = (row.get("name") or "").strip()
+        name, forced = split_mark((row.get("name") or "").strip())
+        study = row.get("study", forced)
         hours = row.get("hours")
         if not name:
             raise ValueError(f"선택지 {number}의 이름(활동 이름)을 입력해야 합니다.")
@@ -65,7 +100,7 @@ def activities_from_item(number: int, item: dict) -> list:
         if name in names:
             raise ValueError(f"선택지 {number}에 활동 '{name}'이 두 번 들어갔습니다.")
         names.add(name)
-        activities.append((name, float(hours)))
+        activities.append((mark_name(name, study), float(hours)))
     if sum(hours for _, hours in activities) > 168:
         raise ValueError(f"선택지 {number}의 활동 시간 합계가 일주일(168시간)을 넘습니다.")
     return activities

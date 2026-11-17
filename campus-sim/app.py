@@ -58,11 +58,20 @@ def run_simulation() -> None:
         result = simulation_mod.run(profile, st.session_state.scenarios, past)
     st.session_state.table = compare_mod.compare(result["rows"], profile["weekly_free_hours"])
     st.session_state.ai_status = result["ai_status"]
+    st.session_state.personal = result["personal"]
+    st.session_state.range_info = result["range"]
 
 
-def new_activity(name: str = "", hours=None) -> dict:
+def new_activity(name: str = "", hours=None, study=None) -> dict:
+    """study: 직접 고른 유형(True 공부 / False 공부 외), None이면 이름으로 자동 판단"""
     st.session_state.activity_seq = st.session_state.get("activity_seq", 0) + 1
-    return {"id": st.session_state.activity_seq, "name": name, "hours": hours}
+    return {"id": st.session_state.activity_seq, "name": name, "hours": hours, "study": study}
+
+
+def set_study(i: int, activity_id: int) -> None:
+    for act in st.session_state.draft[i]["acts"]:
+        if act["id"] == activity_id:
+            act["study"] = st.session_state[f"as_{activity_id}"]
 
 
 def load_draft() -> list:
@@ -71,8 +80,9 @@ def load_draft() -> list:
         st.session_state.draft = [
             {
                 "acts": [
-                    new_activity(name, hours)
+                    new_activity(clean, hours, forced)
                     for name, hours in scenario_mod.parse_activities(s["scenario_option"], s["scenario_hours"])
+                    for clean, forced in [scenario_mod.split_mark(name)]
                 ],
                 "cond": s["scenario_condition"],
             }
@@ -265,7 +275,7 @@ elif menu == "🔀 선택지":
         with st.container(border=True):
             ui.option_title(i, f"선택지 {i + 1}")
             for j, act in enumerate(acts):
-                c1, c2, c3 = st.columns([5, 3, 1], vertical_alignment="bottom")
+                c1, c2, c4, c3 = st.columns([5, 3, 1.6, 1], vertical_alignment="bottom")
                 visibility = "visible" if j == 0 else "collapsed"
                 c1.text_input(
                     "활동 이름", act["name"], key=f"an_{act['id']}", label_visibility=visibility,
@@ -275,14 +285,25 @@ elif menu == "🔀 선택지":
                     "주간 시간", 0.0, 168.0, act["hours"], step=1.0, key=f"ah_{act['id']}",
                     label_visibility=visibility, placeholder="예: 15",
                 )
+                if act["study"] is None:   # 직접 고르기 전에는 이름의 단어로 자동 체크
+                    st.session_state[f"as_{act['id']}"] = scenario_mod.keyword_study(
+                        st.session_state.get(f"an_{act['id']}", act["name"])
+                    )
+                else:
+                    st.session_state[f"as_{act['id']}"] = act["study"]
+                c4.checkbox(
+                    "📚 공부", key=f"as_{act['id']}", on_change=set_study, args=(i, act["id"]),
+                    help="공부 시간이면 체크합니다. 처음에는 이름에 공부 관련 단어가 있으면 자동으로 체크됩니다.",
+                )
                 c3.button(
                     "🗑️", key=f"del_{act['id']}", on_click=remove_activity, args=(i, act["id"]),
                     disabled=len(acts) == 1, help="이 활동 지우기", use_container_width=True,
                 )
             names = [st.session_state.get(f"an_{a['id']}") or "" for a in acts]
             hours = [st.session_state.get(f"ah_{a['id']}") for a in acts]
+            kinds = [bool(st.session_state.get(f"as_{a['id']}")) for a in acts]
             total = sum(h for h in hours if h is not None)
-            study = sum(h for n, h in zip(names, hours) if h is not None and simulation_mod.is_study(n))
+            study = sum(h for k, h in zip(kinds, hours) if h is not None and k)
             c1, c2 = st.columns([1, 2], vertical_alignment="center")
             c1.button(
                 "➕ 활동 추가", key=f"add_{i}", on_click=add_activity, args=(i,),
@@ -295,7 +316,7 @@ elif menu == "🔀 선택지":
             )
         items.append(
             {
-                "activities": [{"name": n, "hours": h} for n, h in zip(names, hours)],
+                "activities": [{"name": n, "hours": h, "study": k} for n, h, k in zip(names, hours, kinds)],
                 "scenario_condition": st.session_state.get(f"cond_{i}", ""),
             }
         )
@@ -303,8 +324,9 @@ elif menu == "🔀 선택지":
     submitted = st.button("저장하고 시뮬레이션 실행 ▶", type="primary")
     ui.callout(
         "📚",
-        "활동 이름에 <b>" + " · ".join(simulation_mod.STUDY_KEYWORDS) + "</b> 중 하나가 들어가면 "
-        "그 시간을 <b>공부 시간</b>으로 보고 시간을 늘릴수록 예상 학점이 오르게 계산합니다. "
+        "<b>📚 공부</b>에 체크한 활동은 <b>공부 시간</b>으로 보고 시간을 늘릴수록 예상 학점이 오르게 계산합니다. "
+        "활동 이름에 <b>" + " · ".join(simulation_mod.STUDY_KEYWORDS) + "</b> 중 하나가 들어가면 자동으로 체크되고, "
+        "“토익”처럼 빠졌거나 “시험 감독 알바”처럼 잘못 체크되면 직접 바꾸면 됩니다. "
         "그 밖의 활동(인턴 · 동아리 등)은 투입 시간만큼 공부할 시간이 줄어 예상 학점이 내려갑니다. "
         "예: <b>인턴 병행 15시간 + 공부 5시간</b>처럼 한 선택지에 활동을 섞을 수 있습니다.",
     )
@@ -340,6 +362,13 @@ elif menu == "📊 결과·보고서":
         st.error(warning)
 
     ui.option_cards(table)
+    personal = st.session_state.get("personal") or {"value": 0, "count": 0, "text": ""}
+    span = st.session_state.get("range_info") or {"width": simulation_mod.RANGE_DEFAULT, "text": ""}
+    ui.callout(
+        "📏",
+        f"<b>내 기록 보정 {personal['value']:+.2f}</b> — {personal['text']}<br>"
+        f"<b>예상 범위 ±{span['width']:g}</b> — {span['text']}",
+    )
 
     tab_chart, tab_table, tab_reason = st.tabs(["📈 차트로 보기", "📋 비교표", "🧮 계산 근거와 보정 이유"])
     with tab_chart:
@@ -434,6 +463,7 @@ elif menu == "📝 학기 말 기록":
                 ("😊", "평균 만족도", f"{sum(int(r['satisfaction']) for r in rows) / len(rows):.1f} / 5"),
             ]
         )
+        ui.trend_chart(rows)
         ui.history_chart(rows)
         st.dataframe(
             [
