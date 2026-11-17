@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>대학생활 시뮬레이션 · 웹 실행</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@stlite/browser@1.12.0/build/stlite.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
   <style>
     :root { --bg: #ffffff; --fg: #1f2937; --muted: #6b7280; --line: #e5e7eb; --accent: #2563eb; }
     @media (prefers-color-scheme: dark) {
@@ -53,7 +54,7 @@
         requirements: [],
         // data 폴더를 브라우저 저장소(IndexedDB)에 연결해 새로고침해도 기록이 남게 합니다.
         idbfsMountpoints: ["/home/pyodide/data"],
-        // .streamlit/config.toml과 같은 테마
+        // .streamlit/config.toml과 같은 테마 (stlite는 값으로 문자열 · 숫자 · 참/거짓만 받습니다. 배열과 "이름:주소" 형식 글꼴은 넣지 마세요)
         streamlitConfig: {
           "client.toolbarMode": "viewer",
           "theme.base": "light",
@@ -63,13 +64,12 @@
           "theme.textColor": "#0f172a",
           "theme.borderColor": "#e2e8f0",
           "theme.linkColor": "#3b5bdb",
-          "theme.font": "Pretendard Variable:https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css, sans-serif",
-          "theme.headingFontWeights": [800, 750, 700, 700, 650, 650],
+          "theme.font": "Pretendard Variable, Pretendard, sans-serif",
+          "theme.headingFontWeights": 800,
           "theme.baseRadius": "12px",
           "theme.buttonRadius": "12px",
           "theme.showWidgetBorder": true,
           "theme.dataframeHeaderBackgroundColor": "#edf2ff",
-          "theme.chartCategoricalColors": ["#2a78d6", "#eb6834", "#1baf7a"],
           "theme.sidebar.backgroundColor": "#141b3a",
           "theme.sidebar.secondaryBackgroundColor": "#1f2853",
           "theme.sidebar.textColor": "#e8ecf6",
@@ -96,9 +96,7 @@
       URL.revokeObjectURL(link.href);
     });
 
-    // 기록을 브라우저 저장소에 주기적으로 반영합니다(이미 반영되어 있으면 아무 일도 하지 않습니다).
-    const SYNC = "import pyodide_js\npyodide_js.FS.syncfs(False, lambda error=None: None)";
-    setInterval(() => app.runPython(SYNC).catch(() => {}), 5000);
+    // 기록은 stlite가 화면을 다시 그릴 때마다 브라우저 저장소(IndexedDB)에 자동으로 저장합니다.
 
     document.getElementById("reset").addEventListener("click", () => {
       if (!confirm("이 브라우저에 저장된 시뮬레이션 기록을 모두 지울까요? 되돌릴 수 없습니다.")) return;
