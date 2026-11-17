@@ -27,7 +27,6 @@
     <a href="./">← 소개 페이지</a>
     <span class="note">브라우저 안에서 Python으로 실행됩니다. 기록은 이 브라우저에만 저장되고, 웹 버전은 AI 보정 없이 계산식 결과만 보여 줍니다.</span>
     <button type="button" id="download">내 기록(CSV) 내려받기</button>
-    <button type="button" id="reset">기록 모두 지우기</button>
   </div>
   <div id="root"></div>
 
@@ -98,13 +97,6 @@
 
     // 기록은 stlite가 화면을 다시 그릴 때마다 브라우저 저장소(IndexedDB)에 자동으로 저장합니다.
 
-    document.getElementById("reset").addEventListener("click", () => {
-      if (!confirm("이 브라우저에 저장된 시뮬레이션 기록을 모두 지울까요? 되돌릴 수 없습니다.")) return;
-      app.unmount();
-      // Emscripten IDBFS는 연결한 폴더 경로를 데이터베이스 이름으로 씁니다.
-      const request = indexedDB.deleteDatabase("/home/pyodide/data");
-      request.onsuccess = request.onerror = request.onblocked = () => location.reload();
-    });
   </script>
 </body>
 </html>

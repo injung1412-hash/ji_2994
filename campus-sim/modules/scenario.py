@@ -98,3 +98,20 @@ def save_plan(profile: dict, scenarios: list, path=LOG_PATH) -> list:
             rows.append(new_row)
     write_log(rows, path)
     return [plan_row(profile, scenario) for scenario in scenarios]
+
+
+def delete_rows(indices, path=LOG_PATH) -> int:
+    """고른 줄(줄 번호)만 지우고 지운 줄 수를 돌려줍니다. 되돌릴 수 없습니다."""
+    rows = read_log(path)
+    targets = set(indices)
+    if not targets:
+        raise ValueError("지울 기록을 하나 이상 골라야 합니다.")
+    if any(not 0 <= index < len(rows) for index in targets):
+        raise ValueError("고른 기록을 찾지 못했습니다. 화면을 새로 고친 뒤 다시 시도해 주세요.")
+    write_log([row for index, row in enumerate(rows) if index not in targets], path)
+    return len(targets)
+
+
+def clear_log(path=LOG_PATH) -> None:
+    """모든 기록을 지우고 항목 이름(첫 줄)만 남깁니다. 되돌릴 수 없습니다."""
+    write_log([], path)
