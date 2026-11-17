@@ -53,6 +53,43 @@ class ProfileScenarioTest(unittest.TestCase):
             self.assertTrue(path.read_bytes().startswith(b"\xef\xbb\xbf"))
 
 
+class ActivityTest(unittest.TestCase):
+    def test_build_with_activities_encodes_name_and_total(self):
+        built = scenario.build_scenarios(
+            [{"activities": [{"name": "인턴 병행", "hours": 15}, {"name": "공부", "hours": 5}], "scenario_condition": "주 3일"}]
+        )[0]
+        self.assertEqual(built["scenario_option"], "인턴 병행(15) + 공부(5)")
+        self.assertEqual(built["scenario_hours"], 20)
+        self.assertEqual(scenario.parse_activities(built["scenario_option"], 20), [("인턴 병행", 15), ("공부", 5)])
+
+    def test_single_activity_saved_as_before(self):
+        built = scenario.build_scenarios([{"activities": [{"name": "인턴 병행", "hours": 15}]}])[0]
+        self.assertEqual((built["scenario_option"], built["scenario_hours"]), ("인턴 병행", 15))
+        self.assertEqual(scenario.parse_activities("인턴 병행", 15), [("인턴 병행", 15)])
+        self.assertEqual(scenario.parse_activities("A(3) + B(4)", 9), [("A(3) + B(4)", 9)])   # 합계가 다르면 조합으로 보지 않음
+
+    def test_activity_validation(self):
+        bad = [
+            [{"name": "", "hours": 5}, {"name": "공부", "hours": 5}],
+            [{"name": "인턴+알바", "hours": 5}, {"name": "공부", "hours": 5}],
+            [{"name": "공부", "hours": 5}, {"name": "공부", "hours": 3}],
+            [{"name": "인턴", "hours": 100}, {"name": "공부", "hours": 100}],
+            [{"name": f"활동{i}", "hours": 1} for i in range(6)],
+        ]
+        for activities in bad:
+            with self.assertRaises(ValueError):
+                scenario.build_scenarios([{"activities": activities}])
+
+    def test_mixed_gpa_splits_study_and_other(self):
+        # 인턴 15(공부 외) + 공부 5: 3.8 + (25 − 15 − 15)×0.02 + 5×0.01 = 3.75
+        self.assertEqual(simulation.base_gpa(3.8, 18, 25, 20, "인턴 병행(15) + 공부(5)")[0], 3.75)
+        # 공부 시간은 공부 외 시간을 뺀 자유 시간까지만 인정: 인턴 20 + 공부 20 → 공부 5시간만
+        self.assertEqual(simulation.base_gpa(3.8, 18, 25, 40, "인턴(20) + 공부(20)")[0], 3.65)
+        row = simulation.calculate(PROFILE, {"scenario_option": "인턴 병행(15) + 공부(5)", "scenario_hours": 20})
+        self.assertEqual((row["label"], row["study_hours"], row["study"], row["all_study"]), ("인턴 병행 + 공부", 5, True, False))
+        self.assertEqual(compare.time_type(row), "혼합 (📚 공부 5시간)")
+
+
 class SimulationTest(unittest.TestCase):
     def test_formula_examples_from_plan(self):
         # 현재 학점 3.8, 18학점, 자유 시간 25시간: 0시간 4.0, 5시간 3.9, 10시간 3.8, 15시간 3.7

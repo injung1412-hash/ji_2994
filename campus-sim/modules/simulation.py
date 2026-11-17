@@ -1,11 +1,14 @@
 # simulation 모듈 — 남는 시간과 보정 전 예상 학점을 계산식으로 구하고,
 # AI가 세부 조건 글과 feedback이 넘긴 지난 학기 기록을 읽어 ±0.3 안에서 보정합니다. (F04, F05, F12 / 문제1)
 # AI가 실패하거나 범위를 벗어나면 계산식 결과에 "AI 보정 없음"을 붙입니다.
-# 선택지 이름에 공부 관련 단어가 있으면 투입 시간을 '공부 시간'으로 보고 학점이 오르게 계산합니다.
+# 활동 이름에 공부 관련 단어가 있으면 그 시간을 '공부 시간'으로 보고 학점이 오르게 계산합니다.
+# 한 선택지에 활동이 여러 개면(예: 인턴 15 + 공부 5) 공부 시간과 공부 외 시간을 나눠 계산합니다.
 import configparser
 import json
 import re
 from pathlib import Path
+
+from modules.scenario import parse_activities
 
 try:
     import anthropic
@@ -30,7 +33,7 @@ NO_AI = "AI 보정 없음"
 SYSTEM_PROMPT = """당신은 대학생의 학기 선택지별 예상 학점을 보정하는 도우미입니다.
 입력 JSON에는 계산식으로 구한 '보정 전 예상 학점'과 선택지별 세부 조건 글, 지난 학기 기록이 있습니다.
 계산식은 투입 시간과 시간 유형만 보고 세부 조건 글과 지난 학기 경험은 반영하지 못합니다. 이 글을 읽고 보정 값을 정하세요.
-시간 유형이 '공부'인 선택지는 계산식이 이미 공부 시간만큼 학점을 올려 두었으니, 같은 이유로 또 올리지 마세요.
+활동 구성에서 유형이 '공부'인 시간은 계산식이 이미 그만큼 학점을 올려 두었으니, 같은 이유로 또 올리지 마세요.
 
 규칙:
 - 선택지마다 adjust(보정 값)를 -0.3에서 0.3 사이의 숫자로 정합니다. 근거가 없으면 0입니다.
@@ -58,31 +61,46 @@ def is_study(scenario_option) -> bool:
     return any(word in str(scenario_option or "") for word in STUDY_KEYWORDS)
 
 
+def split_hours(scenario_option, scenario_hours) -> tuple:
+    """(활동 목록, 공부 시간 합, 공부 외 시간 합). 활동: [{"name", "hours", "study"}, ...]"""
+    activities = [
+        {"name": name, "hours": hours, "study": is_study(name)}
+        for name, hours in parse_activities(scenario_option, scenario_hours)
+    ]
+    study = sum(a["hours"] for a in activities if a["study"])
+    other = sum(a["hours"] for a in activities if not a["study"])
+    return activities, study, other
+
+
 def base_gpa(current_gpa, course_credits, weekly_free_hours, scenario_hours, scenario_option="") -> tuple:
     """보정 전 예상 학점과 계산 근거를 돌려줍니다. 같은 입력에는 항상 같은 값이 나옵니다.
 
-    - 공부 외 선택지: 투입 시간만큼 공부할 수 있는 시간이 줄어 학점이 내려갑니다.
-    - 공부형 선택지: 투입 시간이 곧 공부 시간이라 학점이 오릅니다(자유 시간까지만 인정).
+    - 공부 외 시간(인턴 · 동아리 등): 그만큼 공부할 수 있는 시간이 줄어 학점이 내려갑니다.
+    - 공부 시간: 그 시간이 곧 공부라 학점이 오릅니다(공부 외 시간을 빼고 남은 자유 시간까지만 인정).
     """
     gpa, credits, free = float(current_gpa), float(course_credits), float(weekly_free_hours)
-    hours = float(scenario_hours)
-    left = free_left(free, hours)
-    if is_study(scenario_option):
-        study = min(hours, free)
-        raw = gpa + (free - free * SPARE_RATIO) * HOUR_WEIGHT + study * STUDY_WEIGHT - (credits - BASE_CREDITS) * CREDIT_WEIGHT
+    _, study_hours, other = split_hours(scenario_option, scenario_hours)
+    study = min(study_hours, max(free - other, 0.0))
+    credit_part = (credits - BASE_CREDITS) * CREDIT_WEIGHT
+    raw = gpa + (free - other - free * SPARE_RATIO) * HOUR_WEIGHT + study * STUDY_WEIGHT - credit_part
+    credit_text = f" − ({number_text(credits)} − {BASE_CREDITS})×{CREDIT_WEIGHT} = {number_text(raw)}"
+    if study_hours == 0:      # 공부 외 활동만: 이전과 같은 식
+        evidence = (
+            f"{number_text(gpa)} + ({number_text(free - other)} − {number_text(free)}×{SPARE_RATIO})×{HOUR_WEIGHT}"
+            + credit_text
+        )
+    elif other == 0:          # 공부만
         evidence = (
             f"{number_text(gpa)} + ({number_text(free)} − {number_text(free)}×{SPARE_RATIO})×{HOUR_WEIGHT}"
-            f" + {number_text(study)}×{STUDY_WEIGHT}(공부 시간)"
-            f" − ({number_text(credits)} − {BASE_CREDITS})×{CREDIT_WEIGHT} = {number_text(raw)}"
+            f" + {number_text(study)}×{STUDY_WEIGHT}(공부 시간)" + credit_text
         )
-        if study < hours:
-            evidence += f" (공부 시간은 자유 시간 {number_text(free)}시간까지만 인정)"
-    else:
-        raw = gpa + (left - free * SPARE_RATIO) * HOUR_WEIGHT - (credits - BASE_CREDITS) * CREDIT_WEIGHT
+    else:                     # 공부 + 공부 외 활동
         evidence = (
-            f"{number_text(gpa)} + ({number_text(left)} − {number_text(free)}×{SPARE_RATIO})×{HOUR_WEIGHT}"
-            f" − ({number_text(credits)} − {BASE_CREDITS})×{CREDIT_WEIGHT} = {number_text(raw)}"
+            f"{number_text(gpa)} + ({number_text(free)} − {number_text(other)}(공부 외) − {number_text(free)}×{SPARE_RATIO})"
+            f"×{HOUR_WEIGHT} + {number_text(study)}×{STUDY_WEIGHT}(공부 시간)" + credit_text
         )
+    if study < study_hours:
+        evidence += f" (공부 시간은 남은 자유 시간 {number_text(max(free - other, 0))}시간까지만 인정)"
     value = round(clamp_gpa(raw), 2)
     if not GPA_MIN <= round(raw, 2) <= GPA_MAX:
         evidence += f" → {GPA_MIN}~{GPA_MAX}로 제한 {number_text(value)}"
@@ -95,9 +113,14 @@ def calculate(profile: dict, scenario: dict) -> dict:
         profile["current_gpa"], profile["course_credits"], profile["weekly_free_hours"], hours,
         scenario["scenario_option"],
     )
+    activities, study_hours, _ = split_hours(scenario["scenario_option"], hours)
     return {
         "scenario_option": scenario["scenario_option"],
-        "study": is_study(scenario["scenario_option"]),
+        "label": " + ".join(a["name"] for a in activities),
+        "activities": activities,
+        "study_hours": study_hours,
+        "study": study_hours > 0,
+        "all_study": all(a["study"] for a in activities),
         "scenario_hours": hours,
         "scenario_condition": scenario.get("scenario_condition", ""),
         "free_left": free_left(profile["weekly_free_hours"], hours),
@@ -135,7 +158,14 @@ def build_ai_input(profile: dict, rows: list, past_records: list) -> str:
             {
                 "scenario_option": row["scenario_option"],
                 "투입 시간": row["scenario_hours"],
-                "시간 유형": "공부(계산식이 학점을 올림)" if row["study"] else "공부 외 활동(계산식이 학점을 내림)",
+                "활동 구성": [
+                    {
+                        "활동": a["name"],
+                        "주간 시간": a["hours"],
+                        "유형": "공부(계산식이 학점을 올림)" if a["study"] else "공부 외 활동(계산식이 학점을 내림)",
+                    }
+                    for a in row["activities"]
+                ],
                 "남는 자유 시간": row["free_left"],
                 "세부 조건": row["scenario_condition"] or "(없음)",
                 "보정 전 예상 학점": row["base_gpa"],
