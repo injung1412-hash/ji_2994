@@ -15,7 +15,7 @@ def compare(rows: list, weekly_free_hours) -> dict:
         table.append({**row, "short": short})
         if short:
             warnings.append(
-                f"⚠️ {row['scenario_option']}: 투입 시간 {row['scenario_hours']:g}시간이 "
+                f"⚠️ {row.get('label') or row['scenario_option']}: 투입 시간 {row['scenario_hours']:g}시간이 "
                 f"주간 자유 시간 {float(weekly_free_hours):g}시간을 넘습니다 "
                 f"({-row['free_left']:g}시간 부족)."
             )

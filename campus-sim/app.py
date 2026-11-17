@@ -197,10 +197,17 @@ with st.sidebar:
     st.caption("기록 파일: data/simulation_log.csv")
 
 if st.session_state.pop("scroll_to_top", False):
-    st.html(
-        "<script>document.querySelector('[data-testid=\"stMain\"]').scrollTo(0, 0);</script>",
-        unsafe_allow_javascript=True,
-    )
+    try:
+        st.html(
+            "<script>document.querySelector('[data-testid=\"stMain\"]').scrollTo(0, 0);</script>",
+            unsafe_allow_javascript=True,
+        )
+    except TypeError:   # Streamlit 1.52 이전에는 unsafe_allow_javascript가 없어 빈 iframe으로 대신합니다
+        import streamlit.components.v1 as components
+        components.html(
+            "<script>window.parent.document.querySelector('[data-testid=\"stMain\"]').scrollTo(0, 0);</script>",
+            height=0,
+        )
 
 if "flash_message" in st.session_state:
     st.success(st.session_state.pop("flash_message"), icon="✅")
@@ -491,7 +498,7 @@ elif menu == "⏱️ 학기 중 점검":
     try:
         now_scenario = scenario_mod.build_scenarios([{"activities": acts, "scenario_condition": row["scenario_condition"]}])[0]
     except ValueError as error:
-        st.error(str(error))
+        st.error("입력한 시간이나 새로 생긴 활동 이름을 확인해 주세요. " + str(error).replace("선택지 1의 ", "").replace("선택지 1에 ", ""))
         st.stop()
     now_profile = {**plan_profile, "weekly_free_hours": free_now}
     now_row = simulation_mod.calculate(now_profile, now_scenario, correction)
@@ -617,7 +624,7 @@ elif menu == "🗂️ 기록 관리":
         log = scenario_mod.read_log()
     except ValueError as error:
         st.error(str(error))
-        st.caption("기록 파일을 읽을 수 없을 때는 파일을 초기화하면 다시 쓸 수 있습니다. 기존 내용은 사라집니다.")
+        st.caption("기록 파일을 초기화하면 다시 쓸 수 있습니다(기존 내용은 사라집니다). 초기화한 뒤 내려받아 둔 CSV가 있으면 불러오세요.")
         if st.button("⚠️ 기록 파일 초기화"):
             confirm_clear()
         st.stop()
