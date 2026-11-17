@@ -271,6 +271,19 @@ class BackupTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 scenario.read_backup(bad)
 
+    def test_backup_keeps_multiline_condition(self):
+        scenario.save_plan(PROFILE, scenario.build_scenarios(
+            [{"scenario_option": "알바", "scenario_hours": 5, "scenario_condition": "주 3일 근무\n시험 기간에도 근무"}]), self.path)
+        rows = scenario.read_backup(self.path.read_bytes())
+        self.assertEqual(rows[-1]["scenario_condition"], "주 3일 근무\n시험 기간에도 근무")
+
+    def test_same_activity_names_in_two_options_rejected(self):
+        with self.assertRaises(ValueError):
+            scenario.build_scenarios([
+                {"activities": [{"name": "인턴", "hours": 10}, {"name": "공부", "hours": 5}]},
+                {"activities": [{"name": "인턴", "hours": 15}, {"name": "공부", "hours": 5}]},
+            ])
+
     def test_import_merge_and_replace(self):
         backup = scenario.read_backup(self.path.read_bytes())
         backup[0].update({"actual_gpa": "3.5", "satisfaction": "4", "user_review": "x"})

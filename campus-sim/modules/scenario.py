@@ -3,6 +3,7 @@
 # 한 선택지에 활동을 여러 개 넣으면 scenario_option에 "인턴 병행(15) + 공부(5)"처럼,
 # scenario_hours에 합계를 저장합니다(10개 항목을 늘리지 않습니다).
 import csv
+import io
 import re
 from pathlib import Path
 
@@ -112,13 +113,17 @@ def build_scenarios(items: list) -> list:
     if not 1 <= len(items) <= MAX_OPTIONS:
         raise ValueError(f"선택지는 1개에서 {MAX_OPTIONS}개까지 입력합니다.")
     scenarios = []
-    seen = set()
+    seen = {}
     for number, item in enumerate(items, start=1):
         option, hours = encode_activities(activities_from_item(number, item))
         condition = (item.get("scenario_condition") or "").strip()
-        if option in seen:
-            raise ValueError(f"선택지 '{option}'이 두 번 들어갔습니다.")
-        seen.add(option)
+        key = option_key(option, hours)   # 활동 이름이 같으면 시간이 달라도 같은 선택지로 저장되므로 막습니다
+        if key in seen:
+            raise ValueError(
+                f"선택지 {seen[key]}과 선택지 {number}의 활동 구성('{key}')이 같습니다. "
+                "시간만 다른 경우는 선택지 하나로 비교하거나 활동 이름을 다르게 적어 주세요."
+            )
+        seen[key] = number
         scenarios.append(
             {"scenario_option": option, "scenario_hours": float(hours), "scenario_condition": condition}
         )
@@ -134,9 +139,14 @@ def read_log(path=LOG_PATH) -> list:
     except FileNotFoundError:
         return []
     except (OSError, UnicodeError, csv.Error) as error:
-        raise ValueError(f"{Path(path).name} 파일을 읽을 수 없습니다. 파일을 확인해 주세요.") from error
+        raise ValueError(
+            f"{Path(path).name} 파일을 읽을 수 없습니다. 🗂️ 기록 관리에서 파일을 초기화하거나 내려받아 둔 CSV를 불러와 주세요."
+        ) from error
     if fieldnames and fieldnames != LOG_FIELDS:
-        raise ValueError(f"{Path(path).name} 파일의 항목이 10개 항목과 다릅니다. 파일을 확인해 주세요.")
+        raise ValueError(
+            f"{Path(path).name} 파일의 항목이 10개 항목과 다릅니다. "
+            "🗂️ 기록 관리에서 파일을 초기화하거나 내려받아 둔 CSV를 불러와 주세요."
+        )
     return rows
 
 
@@ -250,7 +260,7 @@ def read_backup(data: bytes) -> list:
         text = data.decode("utf-8-sig")
     except UnicodeDecodeError:
         raise ValueError("파일을 읽을 수 없습니다. 이 시스템에서 내려받은 CSV(UTF-8)인지 확인해 주세요.") from None
-    reader = csv.DictReader(text.splitlines())
+    reader = csv.DictReader(io.StringIO(text, newline=""))   # 세부 조건 안의 줄바꿈을 지킵니다
     if reader.fieldnames != LOG_FIELDS:
         raise ValueError("파일의 항목이 10개 항목(term ~ user_review)과 다릅니다. 이 시스템에서 내려받은 CSV만 불러올 수 있습니다.")
     rows = [{key: (row.get(key) or "").strip() for key in LOG_FIELDS} for row in reader]
