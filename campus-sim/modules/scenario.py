@@ -164,15 +164,28 @@ def plan_row(profile: dict, scenario: dict) -> dict:
     }
 
 
+def option_key(scenario_option, scenario_hours) -> str:
+    """같은 선택지인지 판단하는 열쇠: 활동 이름만(시간 · 유형 표시 제외). 예: '인턴 병행 + 공부'"""
+    try:
+        activities = parse_activities(scenario_option, scenario_hours)
+    except (TypeError, ValueError):
+        return str(scenario_option)
+    return ACTIVITY_JOIN.join(split_mark(name)[0] for name, _ in activities)
+
+
+def same_plan(row: dict, new_row: dict) -> bool:
+    return row["term"] == new_row["term"] and option_key(row["scenario_option"], row["scenario_hours"]) == option_key(
+        new_row["scenario_option"], new_row["scenario_hours"]
+    )
+
+
 def save_plan(profile: dict, scenarios: list, path=LOG_PATH) -> list:
-    """학기 초 기록: 같은 학기 · 같은 선택지 줄이 있으면 고쳐 쓰고, 없으면 새 줄을 붙입니다."""
+    """학기 초 기록: 같은 학기 · 같은 선택지(활동 이름이 같으면 시간만 바뀌어도 같은 선택지) 줄이 있으면
+    고쳐 쓰고, 없으면 새 줄을 붙입니다."""
     rows = read_log(path)
     for scenario in scenarios:
         new_row = plan_row(profile, scenario)
-        same = [
-            row for row in rows
-            if row["term"] == new_row["term"] and row["scenario_option"] == new_row["scenario_option"]
-        ]
+        same = [row for row in rows if same_plan(row, new_row)]
         if any(row["actual_gpa"] for row in same):
             raise ValueError(
                 f"{new_row['term']} 학기의 '{new_row['scenario_option']}'은 이미 실제 결과가 기록되어 고칠 수 없습니다."
@@ -200,3 +213,71 @@ def delete_rows(indices, path=LOG_PATH) -> int:
 def clear_log(path=LOG_PATH) -> None:
     """모든 기록을 지우고 항목 이름(첫 줄)만 남깁니다. 되돌릴 수 없습니다."""
     write_log([], path)
+
+
+def check_row(number: int, row: dict) -> None:
+    """불러온 CSV의 한 줄이 이 시스템이 만든 형식인지 검사합니다."""
+    where = f"{number}번째 줄"
+
+    def number_in(key, low, high, allow_empty=False):
+        text = (row.get(key) or "").strip()
+        if allow_empty and text == "":
+            return
+        try:
+            value = float(text)
+        except ValueError:
+            raise ValueError(f"{where}의 {key} 값('{text}')이 숫자가 아닙니다.") from None
+        if not low <= value <= high:
+            raise ValueError(f"{where}의 {key} 값({text})이 {low:g}~{high:g} 범위를 벗어납니다.")
+
+    if not (row.get("term") or "").strip():
+        raise ValueError(f"{where}에 학기(term)가 없습니다.")
+    if not (row.get("scenario_option") or "").strip():
+        raise ValueError(f"{where}에 선택지(scenario_option)가 없습니다.")
+    number_in("current_gpa", 0, 4.5)
+    number_in("course_credits", 1, 30)
+    number_in("weekly_free_hours", 1, 168)
+    number_in("scenario_hours", 0, 168)
+    number_in("actual_gpa", 0, 4.5, allow_empty=True)
+    number_in("satisfaction", 1, 5, allow_empty=True)
+    if (row.get("actual_gpa") or "").strip() and not (row.get("satisfaction") or "").strip():
+        raise ValueError(f"{where}에 실제 학점은 있는데 만족도가 없습니다.")
+
+
+def read_backup(data: bytes) -> list:
+    """내려받아 둔 simulation_log.csv 내용을 읽어 검사한 뒤 줄 목록으로 돌려줍니다."""
+    try:
+        text = data.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        raise ValueError("파일을 읽을 수 없습니다. 이 시스템에서 내려받은 CSV(UTF-8)인지 확인해 주세요.") from None
+    reader = csv.DictReader(text.splitlines())
+    if reader.fieldnames != LOG_FIELDS:
+        raise ValueError("파일의 항목이 10개 항목(term ~ user_review)과 다릅니다. 이 시스템에서 내려받은 CSV만 불러올 수 있습니다.")
+    rows = [{key: (row.get(key) or "").strip() for key in LOG_FIELDS} for row in reader]
+    if not rows:
+        raise ValueError("파일에 기록이 한 줄도 없습니다.")
+    for number, row in enumerate(rows, start=1):
+        check_row(number, row)
+    return rows
+
+
+def import_rows(new_rows: list, mode: str, path=LOG_PATH) -> dict:
+    """mode "merge": 지금 기록에 합칩니다. 같은 학기 · 선택지가 있으면 실제 결과가 있는 쪽을 남깁니다.
+    mode "replace": 지금 기록을 모두 지우고 파일 내용으로 바꿉니다."""
+    if mode == "replace":
+        write_log(new_rows, path)
+        return {"added": len(new_rows), "updated": 0, "skipped": 0}
+    rows = read_log(path)
+    added = updated = skipped = 0
+    for new_row in new_rows:
+        same = [row for row in rows if same_plan(row, new_row)]
+        if not same:
+            rows.append(new_row)
+            added += 1
+        elif new_row["actual_gpa"] and not same[0]["actual_gpa"]:
+            same[0].update(new_row)
+            updated += 1
+        else:
+            skipped += 1
+    write_log(rows, path)
+    return {"added": added, "updated": updated, "skipped": skipped}

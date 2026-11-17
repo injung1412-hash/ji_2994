@@ -216,6 +216,73 @@ class ActivityTypeTest(unittest.TestCase):
         self.assertEqual(row["base_gpa"], 4.0)
 
 
+class TargetTest(unittest.TestCase):
+    def row(self, option, hours):
+        return simulation.calculate(PROFILE, {"scenario_option": option, "scenario_hours": hours})
+
+    def test_gpa_for_matches_formula(self):
+        for option, hours in [("인턴 병행", 15), ("공부", 15), ("인턴 병행(15) + 공부(5)", 20)]:
+            row = self.row(option, hours)
+            other = sum(a["hours"] for a in row["activities"] if not a["study"])
+            self.assertEqual(simulation.gpa_for(PROFILE, other, row["study_hours"]), row["base_gpa"])
+
+    def test_target_limits(self):
+        plan = simulation.target_plan(PROFILE, self.row("인턴 병행", 15), 3.7)
+        self.assertEqual((plan["ok"], plan["max_other"]), (True, 15))
+        plan = simulation.target_plan(PROFILE, self.row("인턴 병행", 15), 3.9)
+        self.assertEqual((plan["ok"], plan["gap"], plan["max_other"]), (False, 0.2, 5))
+        plan = simulation.target_plan(PROFILE, self.row("인턴 병행(15) + 공부(5)", 20), 4.0)
+        self.assertEqual((plan["max_other"], plan["min_study"]), (2.5, None))   # 공부를 10시간 다 해도 3.8
+        plan = simulation.target_plan(PROFILE, self.row("공부", 5), 4.1)
+        self.assertEqual((plan["max_other"], plan["min_study"]), (None, 10))
+        plan = simulation.target_plan(PROFILE, self.row("인턴 병행", 15), 4.5)
+        self.assertEqual(plan["max_other"], -1)   # 공부 외 활동을 0으로 줄여도 부족
+
+    def test_target_not_fooled_by_rounding(self):
+        # 동아리 10시간, 목표 3.9: 공부 9.5시간이면 3.895(반올림하면 3.90)라 부족, 10시간이 필요
+        plan = simulation.target_plan(PROFILE, self.row("동아리 확대", 10), 3.9)
+        self.assertEqual((plan["max_other"], plan["min_study"]), (5, 10))
+
+    def test_target_uses_personal_correction(self):
+        plan = simulation.target_plan(PROFILE, self.row("인턴 병행", 15), 3.7, correction=-0.1)
+        self.assertEqual((plan["now"], plan["ok"], plan["max_other"]), (3.6, False, 10))
+
+
+class BackupTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.path = Path(self.tmp.name) / "simulation_log.csv"
+        scenario.save_plan(PROFILE, plans(15, 5), self.path)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_replan_combo_updates_same_row(self):
+        two = lambda h: scenario.build_scenarios([{"activities": [{"name": "인턴", "hours": h}, {"name": "공부", "hours": 5}]}])  # noqa: E731
+        scenario.save_plan(PROFILE, two(15), self.path)
+        scenario.save_plan(PROFILE, two(10), self.path)
+        options = [row["scenario_option"] for row in scenario.read_log(self.path)]
+        self.assertEqual(options, ["인턴 병행", "학점 집중", "인턴(10) + 공부(5)"])
+
+    def test_read_backup_validates(self):
+        good = self.path.read_bytes()
+        self.assertEqual(len(scenario.read_backup(good)), 2)
+        for bad in [b"a,b,c\n1,2,3\n", good.replace(b",3.8,", b",9.9,"), good.split(b"\n")[0] + b"\n", "x".encode("utf-16")]:
+            with self.assertRaises(ValueError):
+                scenario.read_backup(bad)
+
+    def test_import_merge_and_replace(self):
+        backup = scenario.read_backup(self.path.read_bytes())
+        backup[0].update({"actual_gpa": "3.5", "satisfaction": "4", "user_review": "x"})
+        backup.append({**backup[1], "term": "2025-2"})
+        result = scenario.import_rows(backup, "merge", self.path)
+        self.assertEqual(result, {"added": 1, "updated": 1, "skipped": 1})
+        rows = scenario.read_log(self.path)
+        self.assertEqual((len(rows), rows[0]["actual_gpa"]), (3, "3.5"))
+        scenario.import_rows(backup[:1], "replace", self.path)
+        self.assertEqual(len(scenario.read_log(self.path)), 1)
+
+
 class CompareReportTest(unittest.TestCase):
     def table(self, *hours):
         return compare.compare(simulation.run(PROFILE, plans(*hours), ask=no_ai)["rows"], 25)

@@ -32,7 +32,7 @@ from modules import ui
 
 
 APP_TITLE = "AI 대학생활 시뮬레이션 시스템"
-MENUS = ["🏠 홈", "👤 프로필", "🔀 선택지", "📊 결과·보고서", "📝 학기 말 기록", "🗂️ 기록 관리"]
+MENUS = ["🏠 홈", "👤 프로필", "🔀 선택지", "📊 결과·보고서", "⏱️ 학기 중 점검", "📝 학기 말 기록", "🗂️ 기록 관리"]
 
 st.set_page_config(page_title=APP_TITLE, page_icon="🎓", layout="wide")
 ui.inject_css()
@@ -153,6 +153,20 @@ def confirm_clear() -> None:
         go_to("🗂️ 기록 관리", "모든 기록을 지웠습니다. 처음부터 다시 시작할 수 있습니다.")
     if c2.button("취소", use_container_width=True):
         st.rerun()
+
+
+def target_input(container, key: str) -> float:
+    """목표 학점 입력칸. 화면을 옮겨 다녀도 마지막에 넣은 값을 기억합니다."""
+    default = st.session_state.get("target_value")
+    if default is None:
+        profile = st.session_state.profile
+        default = float(profile["current_gpa"]) if profile else 3.5
+    value = container.number_input(
+        "🎯 목표 학점", 0.0, 4.5, float(default), step=0.05, format="%.2f", key=key,
+        help="장학금 기준처럼 지키고 싶은 학점을 넣으세요.",
+    )
+    st.session_state.target_value = value
+    return value
 
 
 def safe_history() -> list:
@@ -370,6 +384,20 @@ elif menu == "📊 결과·보고서":
         f"<b>예상 범위 ±{span['width']:g}</b> — {span['text']}",
     )
 
+    st.subheader("🎯 목표 학점으로 거꾸로 계산")
+    c1, c2 = st.columns([1, 3], vertical_alignment="center")
+    target = target_input(c1, "target_result")
+    c2.caption(
+        "목표 학점을 지키려면 선택지마다 **공부 외 활동(인턴 · 동아리 등)은 최대 몇 시간**, **공부는 최소 몇 시간**인지 "
+        "거꾸로 계산합니다. 시간에 따라 다시 계산할 수 없는 AI 보정은 빼고 계산식 + 내 기록 보정으로 계산합니다(0.5시간 단위)."
+    )
+    ui.target_cards(
+        [
+            (ui.label(row), index, simulation_mod.target_plan(st.session_state.profile, row, target, row.get("personal_adjust", 0)))
+            for index, row in enumerate(table["rows"])
+        ]
+    )
+
     tab_chart, tab_table, tab_reason = st.tabs(["📈 차트로 보기", "📋 비교표", "🧮 계산 근거와 보정 이유"])
     with tab_chart:
         c1, c2 = st.columns(2)
@@ -404,6 +432,102 @@ elif menu == "📊 결과·보고서":
         go_to("📊 결과·보고서", "시뮬레이션을 다시 실행했습니다.")
     if c2.button("📝 학기 말에 실제 결과 기록하기", type="primary", use_container_width=True):
         go_to("📝 학기 말 기록")
+
+
+elif menu == "⏱️ 학기 중 점검":
+    ui.page_header(
+        "⏱️", "학기 중", "학기 중 점검",
+        "계획대로 되고 있는지, 지금 실제로 쓰는 시간을 넣어 예상 학점을 다시 계산합니다. 점검 결과는 저장하지 않습니다.",
+    )
+    try:
+        pending = feedback_mod.open_rows()
+    except ValueError as error:
+        st.error(str(error))
+        st.stop()
+    if not pending:
+        st.info("점검할 계획이 없습니다. 학기 초에 선택지를 먼저 입력하세요.")
+        if st.button("🔀 선택지 입력하러 가기", type="primary"):
+            go_to("🔀 선택지" if st.session_state.profile else "👤 프로필")
+        st.stop()
+
+    plans = {
+        f"{row['term']} · {row['scenario_option']} (주 {float(row['scenario_hours']):g}시간)": (index, row)
+        for index, row in pending
+    }
+    choice = st.selectbox("점검할 계획 (학기 초에 실제로 고른 선택지)", list(plans))
+    index, row = plans[choice]
+    plan_profile = {
+        "term": row["term"],
+        "current_gpa": float(row["current_gpa"]),
+        "course_credits": int(float(row["course_credits"])),
+        "weekly_free_hours": float(row["weekly_free_hours"]),
+    }
+    correction = simulation_mod.personal_correction(feedback_mod.past_records(row["term"]))["value"]
+    plan_row = simulation_mod.calculate(plan_profile, row, correction)
+
+    st.subheader("지금 실제로 쓰는 시간")
+    with st.container(border=True):
+        free_now = st.number_input(
+            "지금 주간 자유 시간 (수업 외)", 1.0, 168.0, plan_profile["weekly_free_hours"], step=1.0, key=f"mc_free_{index}",
+            help="학기 중에 수업이나 고정 일정이 늘었다면 줄여서 넣으세요.",
+        )
+        acts = []
+        for j, act in enumerate(plan_row["activities"]):
+            c1, c2 = st.columns([3, 2], vertical_alignment="bottom")
+            c1.markdown(
+                f"{'📚' if act['study'] else '·'} **{act['name']}** — 계획 주 {act['hours']:g}시간"
+            )
+            hours = c2.number_input(
+                f"{act['name']} 지금 주간 시간", 0.0, 168.0, float(act["hours"]), step=1.0,
+                key=f"mc_h_{index}_{j}", label_visibility="collapsed",
+            )
+            acts.append({"name": act["name"], "hours": hours, "study": act["study"]})
+        c1, c2, c3 = st.columns([3, 1.4, 1], vertical_alignment="bottom")
+        extra_name = c1.text_input("새로 생긴 활동 (있으면)", key=f"mc_xn_{index}", placeholder="예: 아르바이트")
+        extra_hours = c2.number_input("주간 시간", 0.0, 168.0, 0.0, step=1.0, key=f"mc_xh_{index}")
+        extra_study = c3.checkbox("📚 공부", key=f"mc_xs_{index}")
+        if extra_name.strip() and extra_hours > 0:
+            acts.append({"name": extra_name.strip(), "hours": extra_hours, "study": extra_study})
+    try:
+        now_scenario = scenario_mod.build_scenarios([{"activities": acts, "scenario_condition": row["scenario_condition"]}])[0]
+    except ValueError as error:
+        st.error(str(error))
+        st.stop()
+    now_profile = {**plan_profile, "weekly_free_hours": free_now}
+    now_row = simulation_mod.calculate(now_profile, now_scenario, correction)
+
+    st.subheader("계획과 비교")
+    ui.compare_plan(plan_row, now_row)
+    delta = now_row["expected_gpa"] - plan_row["expected_gpa"]
+    other_diff = sum(a["hours"] for a in now_row["activities"] if not a["study"]) - sum(
+        a["hours"] for a in plan_row["activities"] if not a["study"]
+    )
+    study_diff = now_row["study_hours"] - plan_row["study_hours"]
+    reasons = []
+    if other_diff:
+        reasons.append(f"공부 외 활동이 계획보다 주 {abs(other_diff):g}시간 {'늘어' if other_diff > 0 else '줄어'}")
+    if study_diff:
+        reasons.append(f"공부 시간이 주 {abs(study_diff):g}시간 {'늘어' if study_diff > 0 else '줄어'}")
+    if free_now != plan_profile["weekly_free_hours"]:
+        reasons.append(f"자유 시간이 {plan_profile['weekly_free_hours']:g} → {free_now:g}시간으로 바뀌어")
+    if reasons:
+        ui.callout(
+            "🧭",
+            ", ".join(reasons) + f" 예상 학점이 <b>{plan_row['expected_gpa']:.2f}에서 {now_row['expected_gpa']:.2f}로</b> 바뀝니다"
+            f"({delta:+.2f})." + (" 시간이 모자랍니다." if now_row["free_left"] < 0 else ""),
+        )
+    else:
+        ui.callout("🧭", "지금 넣은 시간은 학기 초 계획과 같습니다. 바뀐 시간이 있으면 위 칸을 고쳐 보세요.")
+
+    st.subheader("🎯 목표 학점 점검")
+    c1, c2 = st.columns([1, 3], vertical_alignment="center")
+    target = target_input(c1, "target_midterm")
+    c2.caption("지금 상황 기준으로 목표 학점을 지키려면 시간을 어떻게 조정해야 하는지 계산합니다.")
+    ui.target_cards([("지금 상황", 0, simulation_mod.target_plan(now_profile, now_row, target, correction))])
+    st.caption(
+        "점검 결과는 저장하지 않습니다(CSV 10개 항목 유지). 계산식 + 내 기록 보정으로 계산하며 AI 보정은 빠집니다. "
+        "학기 말에는 📝 학기 말 기록에서 실제 결과를 기록하세요."
+    )
 
 
 elif menu == "📝 학기 말 기록":
@@ -485,7 +609,10 @@ elif menu == "📝 학기 말 기록":
 
 
 elif menu == "🗂️ 기록 관리":
-    ui.page_header("🗂️", "기록 관리", "저장된 기록 확인 · 지우기", "잘못 입력한 기록은 골라서 지우고, 처음부터 다시 하고 싶으면 모두 지웁니다.")
+    ui.page_header(
+        "🗂️", "기록 관리", "저장된 기록 확인 · 지우기 · 불러오기",
+        "잘못 입력한 기록은 골라서 지우고, 다른 기기에서 내려받은 CSV로 기록을 옮기거나 되살립니다.",
+    )
     try:
         log = scenario_mod.read_log()
     except ValueError as error:
@@ -503,6 +630,37 @@ elif menu == "🗂️ 기록 관리":
             ("📅", "기록된 학기", f"{len({row['term'] for row in log})}개"),
         ]
     )
+
+    with st.expander("📥 내려받아 둔 CSV로 기록 불러오기 (백업 복원)", expanded=not log):
+        st.caption(
+            "이 시스템에서 내려받은 simulation_log.csv를 올리면 기록을 옮기거나 되살립니다. "
+            "웹 버전 기록은 이 브라우저에만 저장되니, 기기를 바꿀 때 이 기능을 쓰세요."
+        )
+        upload = st.file_uploader("CSV 파일 올리기", type=["csv"], key=f"backup_{st.session_state.get('delete_round', 0)}")
+        if upload is not None:
+            try:
+                incoming = scenario_mod.read_backup(upload.getvalue())
+            except ValueError as error:
+                st.error(str(error))
+            else:
+                st.success(
+                    f"파일 확인 완료: {len(incoming)}줄 · 학기 {len({r['term'] for r in incoming})}개 · "
+                    f"실제 결과 {sum(1 for r in incoming if r['actual_gpa'])}줄"
+                )
+                mode = st.radio(
+                    "불러오는 방법", ["합치기", "바꾸기"], horizontal=True,
+                    captions=["지금 기록에 더합니다. 같은 학기 · 선택지는 실제 결과가 있는 쪽을 남깁니다.", "지금 기록을 모두 지우고 파일 내용으로 바꿉니다."],
+                )
+                agree = mode == "합치기" or st.checkbox("지금 기록을 모두 지우고 파일 내용으로 바꾸는 데 동의합니다")
+                if st.button("📥 불러오기", type="primary", disabled=not agree):
+                    result = scenario_mod.import_rows(incoming, "merge" if mode == "합치기" else "replace")
+                    if mode == "바꾸기":
+                        st.session_state.table = None
+                    st.session_state.delete_round = st.session_state.get("delete_round", 0) + 1
+                    go_to(
+                        "🗂️ 기록 관리",
+                        f"불러왔습니다. 새로 추가 {result['added']}줄 · 실제 결과 채움 {result['updated']}줄 · 건너뜀 {result['skipped']}줄",
+                    )
 
     if not log:
         st.info("저장된 기록이 없습니다. 선택지를 입력하면 여기에 쌓입니다.")
