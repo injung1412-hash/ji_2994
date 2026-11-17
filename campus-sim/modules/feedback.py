@@ -27,7 +27,9 @@ def validate(actual_gpa, satisfaction, user_review) -> None:
 
 def predicted(row: dict) -> float:
     """저장된 입력으로 계산식을 다시 돌린 예상 학점"""
-    value, _ = base_gpa(row["current_gpa"], row["course_credits"], row["weekly_free_hours"], row["scenario_hours"])
+    value, _ = base_gpa(
+        row["current_gpa"], row["course_credits"], row["weekly_free_hours"], row["scenario_hours"], row["scenario_option"]
+    )
     return value
 
 

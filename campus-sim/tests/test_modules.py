@@ -59,6 +59,22 @@ class SimulationTest(unittest.TestCase):
         for hours, expected in [(0, 4.0), (5, 3.9), (10, 3.8), (15, 3.7)]:
             self.assertEqual(simulation.base_gpa(3.8, 18, 25, hours)[0], expected)
 
+    def test_study_option_raises_gpa_with_hours(self):
+        # 공부형: 현재 학점 3.8, 18학점, 자유 시간 25시간 → 0시간 4.0, 5시간 4.05, 15시간 4.15
+        for hours, expected in [(0, 4.0), (5, 4.05), (15, 4.15)]:
+            self.assertEqual(simulation.base_gpa(3.8, 18, 25, hours, "학점 집중")[0], expected)
+        # 같은 15시간이라도 공부형은 오르고, 인턴은 내려갑니다
+        self.assertGreater(simulation.base_gpa(3.8, 18, 25, 15, "공부")[0], 3.8)
+        self.assertLess(simulation.base_gpa(3.8, 18, 25, 15, "인턴 병행")[0], 3.8)
+        # 공부 시간은 자유 시간까지만 인정
+        self.assertEqual(simulation.base_gpa(3.8, 18, 25, 40, "공부")[0], simulation.base_gpa(3.8, 18, 25, 25, "공부")[0])
+
+    def test_is_study_keywords(self):
+        for name in ["공부", "학점 집중", "시험 준비", "스터디 그룹", "복습"]:
+            self.assertTrue(simulation.is_study(name))
+        for name in ["인턴 병행", "동아리 확대", "아르바이트", ""]:
+            self.assertFalse(simulation.is_study(name))
+
     def test_free_left_and_clamp(self):
         self.assertEqual(simulation.free_left(25, 30), -5)
         self.assertEqual(simulation.base_gpa(4.5, 18, 25, 0)[0], 4.5)
@@ -146,6 +162,11 @@ class FeedbackTest(unittest.TestCase):
         for args in [(None, 4, "a"), (3.5, 0, "a"), (3.5, 4, "  ")]:
             with self.assertRaises(ValueError):
                 feedback.record_result(0, *args, path=self.path)
+
+    def test_predicted_uses_study_type(self):
+        index = [i for i, row in feedback.open_rows(self.path) if row["scenario_option"] == "학점 집중"][0]
+        saved = feedback.record_result(index, 4.0, 4, "복습 시간을 늘렸다", self.path)
+        self.assertEqual(saved["predicted_gpa"], 4.05)
 
     def test_past_records_exclude_current_term(self):
         feedback.record_result(0, 3.5, 4, "후기", self.path)
