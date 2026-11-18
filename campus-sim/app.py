@@ -68,6 +68,24 @@ def new_activity(name: str = "", hours=None, study=None) -> dict:
     return {"id": st.session_state.activity_seq, "name": name, "hours": hours, "study": study}
 
 
+CUSTOM = "✏️ 직접 입력"
+
+
+def preset_label(name: str) -> str:
+    return name if name == CUSTOM else ("📚 " if scenario_mod.keyword_study(name) else "· ") + name
+
+
+def pick_activity(i: int, activity_id: int) -> None:
+    """목록에서 활동을 고르면 이름을 바꾸고 유형은 자동 판단으로 되돌립니다."""
+    choice = st.session_state[f"pk_{activity_id}"]
+    for act in st.session_state.draft[i]["acts"]:
+        if act["id"] == activity_id:
+            if choice != CUSTOM:
+                act["name"] = choice
+                act["study"] = None
+            st.session_state.pop(f"an_{activity_id}", None)   # 직접 입력 칸은 지금 이름에서 시작
+
+
 def set_study(i: int, activity_id: int) -> None:
     for act in st.session_state.draft[i]["acts"]:
         if act["id"] == activity_id:
@@ -101,7 +119,11 @@ def sync_draft() -> None:
     """화면 입력값을 draft에 옮겨 둡니다(활동을 추가 · 삭제하기 전에 호출)."""
     for i, option in enumerate(st.session_state.draft):
         for act in option["acts"]:
-            act["name"] = st.session_state.get(f"an_{act['id']}", act["name"])
+            choice = st.session_state.get(f"pk_{act['id']}")
+            if choice and choice != CUSTOM:
+                act["name"] = choice
+            else:
+                act["name"] = st.session_state.get(f"an_{act['id']}", act["name"])
             act["hours"] = st.session_state.get(f"ah_{act['id']}", act["hours"])
         option["cond"] = st.session_state.get(f"cond_{i}", option["cond"])
 
@@ -298,18 +320,29 @@ elif menu == "🔀 선택지":
             for j, act in enumerate(acts):
                 c1, c2, c4, c3 = st.columns([5, 3, 1.6, 1], vertical_alignment="bottom")
                 visibility = "visible" if j == 0 else "collapsed"
-                c1.text_input(
-                    "활동 이름", act["name"], key=f"an_{act['id']}", label_visibility=visibility,
-                    placeholder="예: 인턴 병행 · 공부 · 동아리",
+                options = scenario_mod.PRESET_ACTIVITIES + [CUSTOM]
+                current = act["name"] if act["name"] in scenario_mod.PRESET_ACTIVITIES else CUSTOM
+                if st.session_state.get(f"pk_{act['id']}") not in options:
+                    st.session_state[f"pk_{act['id']}"] = current
+                choice = c1.selectbox(
+                    "활동 고르기", options, key=f"pk_{act['id']}", format_func=preset_label,
+                    on_change=pick_activity, args=(i, act["id"]), label_visibility=visibility,
+                    help="목록에서 고르거나, 맨 아래 '✏️ 직접 입력'을 고르면 이름을 직접 적을 수 있습니다.",
                 )
+                if choice == CUSTOM:
+                    c1.text_input(
+                        "활동 이름 직접 입력", act["name"] if act["name"] not in scenario_mod.PRESET_ACTIVITIES else "",
+                        key=f"an_{act['id']}", label_visibility="collapsed", placeholder="활동 이름을 직접 적으세요 (예: 편입 준비)",
+                    )
+                    name_now = st.session_state.get(f"an_{act['id']}") or ""
+                else:
+                    name_now = choice
                 c2.number_input(
                     "주간 시간", 0.0, 168.0, act["hours"], step=1.0, key=f"ah_{act['id']}",
                     label_visibility=visibility, placeholder="예: 15",
                 )
                 if act["study"] is None:   # 직접 고르기 전에는 이름의 단어로 자동 체크
-                    st.session_state[f"as_{act['id']}"] = scenario_mod.keyword_study(
-                        st.session_state.get(f"an_{act['id']}", act["name"])
-                    )
+                    st.session_state[f"as_{act['id']}"] = scenario_mod.keyword_study(name_now)
                 else:
                     st.session_state[f"as_{act['id']}"] = act["study"]
                 c4.checkbox(
@@ -320,7 +353,11 @@ elif menu == "🔀 선택지":
                     "🗑️", key=f"del_{act['id']}", on_click=remove_activity, args=(i, act["id"]),
                     disabled=len(acts) == 1, help="이 활동 지우기", use_container_width=True,
                 )
-            names = [st.session_state.get(f"an_{a['id']}") or "" for a in acts]
+            names = [
+                st.session_state.get(f"an_{a['id']}") or "" if st.session_state.get(f"pk_{a['id']}") == CUSTOM
+                else st.session_state.get(f"pk_{a['id']}") or a["name"]
+                for a in acts
+            ]
             hours = [st.session_state.get(f"ah_{a['id']}") for a in acts]
             kinds = [bool(st.session_state.get(f"as_{a['id']}")) for a in acts]
             total = sum(h for h in hours if h is not None)
@@ -345,6 +382,7 @@ elif menu == "🔀 선택지":
     submitted = st.button("저장하고 시뮬레이션 실행 ▶", type="primary")
     ui.callout(
         "📚",
+        "활동은 <b>목록에서 고르거나 ✏️ 직접 입력</b>할 수 있습니다. "
         "<b>📚 공부</b>에 체크한 활동은 <b>공부 시간</b>으로 보고 시간을 늘릴수록 예상 학점이 오르게 계산합니다. "
         "활동 이름에 <b>" + " · ".join(simulation_mod.STUDY_KEYWORDS) + "</b> 중 하나가 들어가면 자동으로 체크되고, "
         "“토익”처럼 빠졌거나 “시험 감독 알바”처럼 잘못 체크되면 직접 바꾸면 됩니다. "
