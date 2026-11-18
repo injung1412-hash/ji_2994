@@ -195,6 +195,14 @@ class CorrectionRangeTest(unittest.TestCase):
 
 
 class ActivityTypeTest(unittest.TestCase):
+    def test_preset_activities_have_expected_type(self):
+        self.assertTrue(all(scenario.keyword_study(name) for name in scenario.PRESET_STUDY))
+        self.assertFalse(any(scenario.keyword_study(name) for name in scenario.PRESET_OTHER))
+        self.assertTrue(set(scenario.SUGGESTED_OPTIONS) <= set(scenario.PRESET_ACTIVITIES))
+        for name in scenario.PRESET_ACTIVITIES:   # 목록 이름은 조합 저장 형식과 겹치지 않아야 합니다
+            self.assertNotIn("+", name)
+            self.assertIsNone(scenario.ACTIVITY_RE.match(name))
+
     def test_override_marks_only_when_different(self):
         self.assertEqual(scenario.mark_name("토익", True), "[공부] 토익")
         self.assertEqual(scenario.mark_name("시험 감독 알바", False), "[공부 외] 시험 감독 알바")

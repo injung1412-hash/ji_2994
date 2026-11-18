@@ -14,6 +14,10 @@ SCENARIO_FIELDS = ["scenario_option", "scenario_hours", "scenario_condition"]
 RESULT_FIELDS = ["actual_gpa", "satisfaction", "user_review"]
 LOG_FIELDS = PROFILE_FIELDS + SCENARIO_FIELDS + RESULT_FIELDS   # 10개 항목, 칸을 늘리지 않습니다
 SUGGESTED_OPTIONS = ["인턴 병행", "학점 집중", "동아리 확대"]
+# 선택지 화면에서 고를 수 있는 활동 목록(직접 입력도 가능). 공부 활동은 이름에 공부 관련 단어가 있어 자동으로 📚 체크됩니다.
+PRESET_STUDY = ["학점 집중", "전공 공부", "시험 준비", "과제 · 팀플", "스터디", "토익 · 어학 공부", "자격증 공부"]
+PRESET_OTHER = ["인턴 병행", "아르바이트", "동아리 확대", "학생회", "대외활동 · 공모전", "봉사활동", "운동", "취미 · 휴식"]
+PRESET_ACTIVITIES = PRESET_STUDY + PRESET_OTHER
 MAX_OPTIONS = 3
 MAX_ACTIVITIES = 5          # 한 선택지 안의 활동 수
 ACTIVITY_JOIN = " + "
