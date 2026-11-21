@@ -242,14 +242,6 @@ if menu == "🏠 홈":
         "인턴 병행 · 학점 집중 · 동아리 확대 중 어디에 시간을 쓸지 고민될 때, "
         "선택지마다 <b>남는 자유 시간</b>과 <b>예상 학점</b>을 같은 기준으로 비교해 보여 줍니다.",
     )
-    ui.stats(
-        [
-            ("👤", "프로필", "입력됨" if st.session_state.profile else "미입력"),
-            ("🔀", "선택지 수", f"{len(st.session_state.scenarios)}개"),
-            ("📝", "기록된 학기 결과", f"{len(records)}건"),
-        ]
-    )
-
     if st.session_state.table is not None:
         target = ("▶ 결과 보기", "📊 결과·보고서")
     elif st.session_state.profile:
@@ -258,6 +250,15 @@ if menu == "🏠 홈":
         target = ("▶ 시작하기", "👤 프로필")
     if st.button(target[0], type="primary"):
         go_to(target[1])
+
+    ui.stats(
+        [
+            ("👤", "프로필", "입력됨" if st.session_state.profile else "미입력"),
+            ("🔀", "선택지 수", f"{len(st.session_state.scenarios)}개"),
+            ("📝", "기록된 학기 결과", f"{len(records)}건"),
+        ]
+    )
+
 
     st.subheader("사용 흐름")
     ui.flow()
