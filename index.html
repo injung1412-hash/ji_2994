@@ -84,6 +84,8 @@
     </div>
     <div class="side-block side-nav-block">
       <nav class="nav tabs" role="tablist" aria-label="분석 화면">
+        <p class="nav-group">AI 도구</p>
+        <button role="tab" data-tab="chat" class="nav-ai"><span class="ix">AI</span>분석 도우미 채팅</button>
         <p class="nav-group">자료</p>
         <button role="tab" data-tab="explorer" aria-selected="true"><span class="ix">01</span>원자료 탐색</button>
         <button role="tab" data-tab="classify"><span class="ix">02</span>부문분류 검색</button>
@@ -159,6 +161,24 @@
     <section class="insight insight-lg needs-data" id="lv-insight" aria-live="polite" hidden></section>
 
     <!-- 빈 상태 템플릿은 각 탭에 반복 배치 -->
+
+    <!-- ============ AI 도구: 분석 도우미 채팅 ============ -->
+    <section class="panel tab" id="tab-chat" role="tabpanel" hidden>
+      <div class="panel-head"><div>
+        <p class="eyebrow">AI 도구</p>
+        <h2>분석 도우미 채팅</h2>
+        <p class="panel-desc">「반도체 수출이 1조 줄면?」처럼 묻으면 질문에서 산업·지표·금액을 읽어 이 웹앱의 계산 기능으로 답합니다. 외부 AI 서버나 API 키를 쓰지 않아 <b>모든 숫자는 원표로 계산한 값</b>이며, 답은 지금 고른 분석 기준 분류로 계산됩니다.</p>
+      </div><span class="formula">Δx = (I − A<sup>d</sup>)<sup>−1</sup>Δf</span></div>
+      <div class="chat">
+        <div id="chat-log" class="chat-log" role="log" aria-live="polite" aria-label="대화 내용"></div>
+        <form id="chat-form" class="chat-form">
+          <label for="chat-input" class="visually-hidden">질문</label>
+          <input id="chat-input" autocomplete="off" placeholder="예: 반도체 수출이 1조 줄면 일자리는?">
+          <button type="submit" id="chat-send">보내기</button>
+          <button type="button" class="ghost" id="chat-clear">대화 지우기</button>
+        </form>
+      </div>
+    </section>
 
     <!-- ============ ① 원자료 탐색 ============ -->
     <section class="panel tab" id="tab-explorer" role="tabpanel">

@@ -210,6 +210,7 @@ document.querySelectorAll('.tabs [role=tab]').forEach((b) => b.addEventListener(
 }));
 function renderTab() {
   const t = state.tab;
+  if (t === 'chat') { setTimeout(() => $('chat-input').focus(), 50); return null; }
   if (t === 'explorer') return state.active && !$('ex-sheet').options.length ? fillExplorerDatasets() : null;
   if (t === 'classify') return runClassify();
   if (t === 'structure') return renderStructure();
@@ -968,6 +969,331 @@ function priceInsight(r) {
     { k: '가장 크게 오르는 부문', v: t3[0].name + ' +' + fmt(t3[0].dp, 2) + '%', t: ['다음으로 ', { b: t3.slice(1).map((x) => x.name + ' +' + fmt(x.dp, 2) + '%').join(', ') }] },
   ], LEVEL_LABEL[state.active] + ' 기준 · 비용 100% 전가·수요 불변 가정의 최대치');
 }
+
+/* ================= AI 도구: 분석 도우미 채팅 ================= */
+// 질문에서 산업·지표·금액·비율을 읽어 기존 계산 함수(model.py)로 답함. 외부 AI 서버 연결 없음 → 숫자는 모두 원표 계산값.
+const CHAT_ALIAS = [
+  ['국제유가', '원유'], ['유가', '원유'], ['기름값', '원유'], ['스마트폰', '이동전화기'], ['휴대폰', '이동전화기'], ['핸드폰', '이동전화기'],
+  ['2차전지', '전지'], ['배터리', '전지'], ['조선업', '선박'], ['조선', '선박'], ['전기요금', '전력'], ['전기료', '전력'],
+  ['농업', '농림수산품'], ['농산물', '작물'], ['식당', '음식점'], ['은행', '금융'], ['아이티', '정보통신'], ['IT', '정보통신'],
+  ['철강업', '철강'], ['석유화학', '화학'], ['車', '자동차'],
+];
+const CHAT_STOP = new Set(['서비스', '제품', '기타', '관련', '부문', '산업', '기초', '일반', '목적용', '전문', '사업', '공급', '처리', '용품', '1차']);
+const CHAT_METRICS = [ // 구체적인 말을 먼저 검사
+  { re: /부가가치\s*율/, key: 'va_rate', src: 'st', label: '부가가치율', unit: '%', d: 1, rate: true, note: '부가가치 ÷ 총투입' },
+  { re: /중간\s*투입\s*률/, key: 'int_rate', src: 'st', label: '중간투입률', unit: '%', d: 1, rate: true, note: '중간투입 ÷ 총투입' },
+  { re: /수입\s*의존/, key: 'imp_dep', src: 'st', label: '수입의존도', unit: '%', d: 1, rate: true, note: '수입 중간재 ÷ 총투입' },
+  { re: /국산화\s*율/, key: 'dom_rate', src: 'st', label: '국산화율', unit: '%', d: 1, rate: true, note: '국산 중간재 ÷ 중간재' },
+  { re: /수출\s*(률|비중|비율)/, key: 'export_rate', src: 'st', label: '수출률', unit: '%', d: 1, rate: true, note: '수출 ÷ 총산출' },
+  { re: /수입\s*(률|비율)/, key: 'import_rate', src: 'st', label: '수입률', unit: '%', d: 1, rate: true, note: '수입 ÷ 총공급' },
+  { re: /생산\s*유발/, key: 'prod', src: 'mu', label: '생산유발계수', unit: '배', d: 3, note: '최종수요 1원당 생산' },
+  { re: /부가가치\s*유발/, key: 'va', src: 'mu', label: '부가가치유발계수', unit: '', d: 3, note: '최종수요 1원당 부가가치' },
+  { re: /수입\s*유발/, key: 'imp', src: 'mu', label: '수입유발계수', unit: '', d: 3, note: '최종수요 1원당 수입' },
+  { re: /고용\s*유발|임금\s*근로자/, key: 'wage', src: 'mu', label: '고용유발계수', unit: '명/10억원', d: 1, note: '10억원당 임금근로자' },
+  { re: /취업\s*유발|일자리|고용|취업/, key: 'emp', src: 'mu', label: '취업유발계수', unit: '명/10억원', d: 1, note: '10억원당 취업자' },
+  { re: /영향력/, key: 'influence', src: 'mu', label: '영향력계수', unit: '', d: 3, note: '후방연쇄, 평균=1' },
+  { re: /감응도/, key: 'sensitivity', src: 'mu', label: '감응도계수', unit: '', d: 3, note: '전방연쇄, 평균=1' },
+  { re: /부가가치/, key: 'va_share', src: 'st', label: '부가가치 구성비', unit: '%', d: 2, note: '전체 부가가치 중 비중' },
+  { re: /총산출|생산액|산출액|규모/, key: 'output_share', src: 'st', label: '총산출 구성비', unit: '%', d: 2, note: '전체 산출 중 비중' },
+];
+const chat = { index: {}, busy: false };
+
+function chatEl(role, ...kids) {
+  const m = el('div', { class: 'chat-msg ' + role }, el('div', { class: 'chat-bubble' }, ...kids));
+  $('chat-log').append(m);
+  $('chat-log').scrollTop = $('chat-log').scrollHeight;
+  return m;
+}
+const cP = (...parts) => el('p', null, ...parts.map((x) => (typeof x === 'string' ? x : el('b', { text: x.b }))));
+const cCards = (cards) => el('div', { class: 'chat-cards' }, cards.filter(Boolean).map((c) => el('div', { class: 'ins-card' + (c.tone ? ' ' + c.tone : '') },
+  el('span', { class: 'ins-k', text: c.k }), el('span', { class: 'ins-v', text: c.v }), c.t ? el('span', { class: 'ins-t', text: c.t }) : null)));
+const cNote = (t) => el('p', { class: 'chat-note', text: t });
+function cGo(label, tab, before) {
+  return el('button', { type: 'button', class: 'ghost chat-go', onclick: async () => {
+    if (before) await before();
+    document.querySelector('.tabs [data-tab="' + tab + '"]').click();
+  } }, label + ' →');
+}
+function cTable(cols, rows) {
+  return el('div', { class: 'scroll chat-table' }, el('table', null,
+    el('thead', null, el('tr', null, cols.map((c) => el('th', { class: c.num ? 'num' : null, text: c.label })))),
+    el('tbody', null, rows.map((r) => el('tr', null, cols.map((c) => el('td', { class: c.num ? 'num' : null, text: c.fmt ? c.fmt(r[c.key], r) : r[c.key] })))))));
+}
+
+// 산업 이름 사전: 4개 분류의 모든 명칭 → 현재 분류의 코드
+async function chatIndex(key) {
+  if (chat.index[key]) return chat.index[key];
+  const rows = await clsList();
+  const map = new Map();
+  const add = (nm, code) => { if (!nm || !code) return; nm = nm.trim(); if (!map.has(nm)) map.set(nm, new Set()); map.get(nm).add(code); };
+  for (const r of rows) for (const lv of LEVELS) add(r[lv + '_name'], r[key]);
+  for (const s of sectorsOf(key)) add(s.name, s.code);
+  const names = [...map.keys()].filter((n) => n.length >= 2).sort((a, b) => b.length - a.length);
+  const tokens = new Map();
+  for (const n of names) for (const t of n.split(/[\s,·및()]+/)) if (t.length >= 2 && !CHAT_STOP.has(t) && !map.has(t)) {
+    if (!tokens.has(t)) tokens.set(t, new Set());
+    map.get(n).forEach((c) => tokens.get(t).add(c));
+  }
+  return (chat.index[key] = { map, names, tokens: [...tokens.keys()].sort((a, b) => b.length - a.length), tokenMap: tokens });
+}
+async function chatFindSectors(q, key) {
+  let text = q;
+  for (const [a, b] of CHAT_ALIAS) text = text.split(a).join(b);
+  const ix = await chatIndex(key);
+  const used = new Array(text.length).fill(false);
+  const found = [];
+  const take = (word, codes) => {
+    let pos = text.indexOf(word);
+    while (pos >= 0) {
+      if (!used.slice(pos, pos + word.length).some(Boolean)) {
+        for (let i = pos; i < pos + word.length; i++) used[i] = true;
+        found.push({ pos, word, codes: [...codes] });
+        return;
+      }
+      pos = text.indexOf(word, pos + 1);
+    }
+  };
+  for (const n of ix.names) if (text.includes(n)) take(n, ix.map.get(n));
+  for (const t of ix.tokens) if (text.includes(t)) take(t, ix.tokenMap.get(t));
+  found.sort((a, b) => a.pos - b.pos);
+  const st = await getCached('structure', 'structure', [key]);
+  const out = Object.fromEntries(st.rows.map((r) => [r.code, r]));
+  const res = [];
+  for (const f of found) {
+    const cands = f.codes.filter((c) => out[c]).sort((a, b) => out[b].output - out[a].output);
+    if (!cands.length || res.some((r) => r.code === cands[0])) continue;
+    res.push({ code: cands[0], name: out[cands[0]].name, word: f.word, split: cands.length > 1 ? cands.length : 0 });
+  }
+  return res;
+}
+function chatAmount(q) { // 백만원 단위
+  const units = { '조': 1e6, '천억': 1e5, '백억': 1e4, '억': 100, '천만': 10, '백만': 1 };
+  let total = 0, hit = false;
+  const re = /(\d[\d,]*(?:\.\d+)?)\s*(조|천억|백억|억|천만|백만)/g;
+  let m;
+  while ((m = re.exec(q))) { total += Number(m[1].replace(/,/g, '')) * units[m[2]]; hit = true; }
+  if (!hit) return null;
+  return (/(줄|감소|하락|축소|떨어|빠지|위축|급감|감축)/.test(q) ? -1 : 1) * total;
+}
+function chatPercent(q) {
+  const m = q.match(/(\d+(?:\.\d+)?)\s*(%|퍼센트|프로)/);
+  return m ? Number(m[1]) : null;
+}
+const chatMetric = (q) => CHAT_METRICS.find((m) => m.re.test(q));
+
+async function chatAnswer(q) {
+  if (!state.active) {
+    return [cP('먼저 투입산출표를 불러와야 답할 수 있어요. 가장 빠른 ', { b: '통합대분류' }, '부터 불러올까요?'),
+      el('button', { type: 'button', class: 'chat-go', onclick: async () => { if (state.busy) return; setBusy(true); await loadLevel('large'); setBusy(false); } }, '통합대분류 불러오기')];
+  }
+  const key = state.active, lvl = LEVEL_LABEL[key];
+  const qn = q.replace(/\s+/g, ' ').trim();
+  if (/^(안녕|도움|help|뭐|무엇을|사용법|어떻게)/i.test(qn) || qn.length < 2) return chatHelp();
+  const secs = await chatFindSectors(qn, key);
+  const amt = chatAmount(qn), pct = chatPercent(qn), metric = chatMetric(qn);
+  const sec = secs[0];
+  const splitNote = (s) => {
+    if (!s) return null;
+    const notes = [];
+    if (s.split) notes.push('「' + s.word + '」에 해당하는 부문이 ' + lvl + '에 ' + s.split + '개 있어, 산출액이 가장 큰 ' + josa(s.name, '으로', '로') + ' 계산했습니다.');
+    else if (s.word && !s.name.includes(s.word)) notes.push('「' + s.word + '」' + josa(s.word, '은', '는').slice(s.word.length) + ' ' + lvl + '에서 「' + s.name + '」 부문에 속합니다.');
+    return notes.length ? cNote(notes.join(' ')) : null;
+  };
+
+  // 1) 분류수준 비교
+  if (sec && /(분류\s*별|분류\s*수준|집계|분류마다|분류에\s*따라)/.test(qn)) return chatCompare(sec, amt);
+  // 2) 가격 파급: 비율 + 가격·물가 단어
+  if (pct != null && /(가격|물가|오르|상승|인상|올라|비싸|임금|인건비|월급)/.test(qn)) return chatPrice(qn, pct, sec, key, lvl, splitNote);
+  // 3) 수요충격: 금액 + 산업
+  if (amt != null && sec) return chatSim(sec, amt, key, lvl, splitNote, secs);
+  // 4) 두 산업 이상 비교
+  if (secs.length >= 2) return chatCompareSectors(secs.slice(0, 4), key, lvl);
+  // 4-1) 경제 전체 (산업 이름 없이 전체를 물을 때)
+  const macroWord = /(전산업|경제\s*전체|전체\s*경제|우리나라|한국\s*경제|국민\s*경제|총공급|gdp)/i;
+  if (!sec && macroWord.test(qn)) return chatMacro(key, lvl);
+  // 5) 순위: 산업 이름 없이 지표만 묻거나, 순위를 묻는 말이 있을 때
+  const rankWord = /(순위|상위|하위|가장|어느|어디|어떤\s*산업|\d+\s*개|top)/i.test(qn) || (!sec && /(높은|큰|많은|낮은|작은|적은)/.test(qn));
+  if (metric && (!sec || rankWord)) return chatRank(metric, qn, key, lvl);
+  // 6) 산업 하나 프로필
+  if (sec) return chatProfile(sec, metric, key, lvl, splitNote);
+  // 7) 경제 전체
+  if (/(전산업|경제\s*전체|우리나라|한국\s*경제|총공급|총산출|gdp|부가가치\s*합|전체)/i.test(qn)) return chatMacro(key, lvl);
+  if (amt != null) return [cP('금액(', { b: korMoney(Math.abs(amt)).replace('≈ ', '') }, ')은 읽었는데 어떤 산업인지 찾지 못했어요. 예: 「', { b: '자동차 수출이 1조 줄면?' }, '」'), chatExamples()];
+  return chatHelp('질문을 이해하지 못했어요. 산업 이름과 궁금한 지표를 함께 적어 주세요.');
+}
+
+function chatExamples() {
+  const ex = ['반도체 수출이 1조 줄면 일자리는?', '자동차 생산유발계수', '유가 10% 오르면 물가는?', '건설이랑 금융 비교', '부가가치율 높은 산업', '집적회로 분류별로 비교', '임금이 5% 오르면?'];
+  return el('div', { class: 'chat-chips' }, ex.map((t) => el('button', { type: 'button', class: 'chip', onclick: () => chatSend(t) }, t)));
+}
+function chatHelp(lead) {
+  return [cP(lead || '산업연관표에 대해 물어보세요. 이런 질문을 이해합니다.'),
+    el('ul', { class: 'chat-list' },
+      el('li', null, el('b', { text: '산업 정보' }), ' — 「자동차 생산유발계수」 「농업 영향력계수」'),
+      el('li', null, el('b', { text: '수요 변화' }), ' — 「반도체 수출이 1조 줄면?」 「건설 투자 5천억 늘면?」'),
+      el('li', null, el('b', { text: '가격 파급' }), ' — 「유가 10% 오르면 물가는?」 「임금이 5% 오르면?」'),
+      el('li', null, el('b', { text: '비교·순위' }), ' — 「건설이랑 금융 비교」 「수입의존도 높은 산업」'),
+      el('li', null, el('b', { text: '분류 비교' }), ' — 「집적회로 분류별로 비교」')),
+    chatExamples()];
+}
+
+async function chatProfile(sec, metric, key, lvl, splitNote) {
+  const [st, mu] = await Promise.all([getCached('structure', 'structure', [key]), getCached('mult', 'multipliers', [key])]);
+  const s = st.rows.find((r) => r.code === sec.code), m = mu.rows.find((r) => r.code === sec.code);
+  const live = mu.rows.filter((r) => !r.zero).sort((a, b) => b.prod - a.prod);
+  const rank = live.findIndex((r) => r.code === sec.code) + 1;
+  const out = [];
+  if (metric) {
+    const v = metric.src === 'st' ? s[metric.key] : m[metric.key];
+    out.push(cP({ b: sec.name }, '의 ', josa(metric.label, '은', '는') + ' ', { b: v == null ? '자료 없음' : fmt(v, metric.d) + (metric.unit ? (metric.unit === '배' || metric.unit === '%' ? '' : ' ') + metric.unit : '') }, '입니다 (' + metric.note + ', ' + lvl + ' 기준).'));
+    if ((metric.key === 'emp' || metric.key === 'wage') && !mu.employment_exact) out.push(cNote('취업·고용 계수는 소속 대분류의 취업계수를 적용한 근사치입니다. 통합대분류로 바꾸면 정확한 값이 나옵니다.'));
+  } else out.push(cP({ b: sec.name }, '(' + sec.code + ')의 주요 지표입니다 (' + lvl + ' 기준).'));
+  out.push(splitNote(sec));
+  out.push(cCards([
+    { k: '총산출', v: K(s.output), t: '전체의 ' + pc(s.output_share, 2) },
+    { k: '부가가치율', v: pc(s.va_rate), t: '중간투입률 ' + pc(s.int_rate) },
+    { k: '생산유발계수', v: fmt(m.prod, 3) + '배', t: live.length + '개 중 ' + rank + '위' },
+    { k: '영향력 · 감응도', v: fmt(m.influence, 2) + ' · ' + fmt(m.sensitivity, 2), t: m.quadrant },
+    { k: '수입의존도', v: pc(s.imp_dep), t: '수출률 ' + pc(s.export_rate) },
+    mu.employment ? { k: '취업유발계수', v: fmt(m.emp, 1) + '명', t: '10억원당' + (mu.employment_exact ? '' : ' (근사치)') } : null,
+  ]));
+  out.push(el('div', { class: 'chat-actions' },
+    cGo('투입·배분구조 보기', 'linkage', () => { $('lk-q').value = ''; lkPicker.fill(sec.code); }),
+    cGo('유발계수 표에서 보기', 'mult', () => { $('mu-q').value = sec.name; })));
+  return out;
+}
+
+async function chatSim(sec, amt, key, lvl, splitNote, secs) {
+  const r = await call('simulate', [key, JSON.stringify({ shocks: [{ code: sec.code, amount: amt }], mode: 'domestic' })]);
+  const t = r.totals, dir = amt < 0 ? '감소' : '증가', tone = amt < 0 ? 'down' : 'up';
+  const ind = r.rows.filter((x) => !x.demand).sort((a, b) => Math.abs(b.indirect) - Math.abs(a.indirect)).slice(0, 3);
+  const out = [cP({ b: sec.name }, '의 국산품 최종수요가 ', { b: K(amt) + ' ' + dir }, '하면 (' + lvl + ' 기준):'), splitNote(sec),
+    cCards([
+      { k: '생산', v: K(t.production) + ' ' + dir, tone, t: '생산유발 배수 ' + fmt(t.prod_multiplier, 3) },
+      { k: '부가가치', v: K(t.valueAdded) + ' ' + dir, tone, t: '입력액의 ' + pc(t.valueAdded / t.input * 100) },
+      { k: '수입', v: K(t.imports) + ' ' + dir, tone, t: '입력액의 ' + pc(t.imports / t.input * 100) },
+      r.employment ? { k: '일자리', v: fmt(Math.abs(t.emp), 0) + '명 ' + dir, tone, t: '임금근로자 ' + fmt(Math.abs(t.wageEmp), 0) + '명' + (r.employment_exact ? '' : ' · 근사치') } : null,
+    ]),
+    ind.length ? cP('간접효과가 큰 산업: ', { b: ind.map((x) => x.name).join(', ') }) : null,
+    cNote('Δx = (I − Aᵈ)⁻¹Δf 로 계산. 부가가치 + 수입 = 입력액(검산 오차 ' + fmt(r.check, 6) + '백만원).')];
+  if (secs.length > 1) out.push(cNote('여러 산업이 보여 첫 번째인 ' + sec.name + '만 계산했어요. 여러 산업을 함께 넣으려면 시뮬레이터를 쓰세요.'));
+  out.push(el('div', { class: 'chat-actions' }, cGo('시뮬레이터에서 자세히', 'sim', () => {
+    state.basket = [{ code: sec.code, name: sec.name, amount: amt }]; invalidateSim(); renderBasket();
+  })));
+  return out;
+}
+
+async function chatPrice(qn, pct, sec, key, lvl, splitNote) {
+  let payload;
+  if (/(임금|인건비|월급|피용자)/.test(qn)) payload = { mode: 'va', item: '9610', rate: pct };
+  else if (/(세금|생산세)/.test(qn)) payload = { mode: 'va', item: '9630', rate: pct };
+  else if (sec) {
+    const imp = /수입/.test(qn) || /(원유|천연가스|석탄|광산|광물|LNG|금속광)/.test(sec.name + sec.word);
+    payload = { mode: imp ? 'import' : 'domestic', code: sec.code, rate: pct };
+  } else return [cP('어떤 가격이 오르는지 찾지 못했어요. 예: 「', { b: '유가 10% 오르면?' }, '」 「', { b: '전력 가격 5% 오르면?' }, '」 「', { b: '임금이 3% 오르면?' }, '」')];
+  const r = await call('price', [key, JSON.stringify(payload)]);
+  const t3 = r.rows.filter((x) => Math.abs(x.dp) > 0 && (!sec || x.code !== sec.code || payload.mode === 'import')).slice(0, 3);
+  return [cP({ b: r.label }, ' (' + lvl + ' 기준):'), sec && payload.mode !== 'va' ? splitNote(sec) : null,
+    cCards([
+      { k: '소비자물가 영향', v: '+' + fmt(r.indices.consumer, 3) + '%', tone: 'down', t: '가계소비 구성비 가중' },
+      { k: '생산자물가 영향', v: '+' + fmt(r.indices.producer, 3) + '%', tone: 'down', t: '총산출 가중' },
+      t3.length ? { k: '가장 크게 오르는 부문', v: t3[0].name + ' +' + fmt(t3[0].dp, 2) + '%', t: t3.slice(1).map((x) => x.name + ' +' + fmt(x.dp, 2) + '%').join(', ') } : null,
+    ]),
+    cNote('레온티에프 가격모형. 비용이 100% 전가되고 수요가 변하지 않는다는 가정의 최대치입니다.' + (payload.mode === 'import' ? ' 수입품 가격 상승으로 계산했습니다.' : payload.mode === 'domestic' ? ' 국산품 가격 상승으로 계산했습니다.' : '')),
+    el('div', { class: 'chat-actions' }, cGo('가격파급 화면에서 보기', 'price', () => {
+      $('pr-mode').value = payload.mode; $('pr-rate').value = pct;
+      if (payload.mode === 'va') $('pr-item').value = payload.item; else { $('pr-q').value = ''; prPicker.fill(payload.code); }
+      syncPriceDefaults();
+    }))];
+}
+
+async function chatCompareSectors(secs, key, lvl) {
+  const [st, mu] = await Promise.all([getCached('structure', 'structure', [key]), getCached('mult', 'multipliers', [key])]);
+  const rows = secs.map((x) => ({ ...st.rows.find((r) => r.code === x.code), ...mu.rows.find((r) => r.code === x.code) }));
+  const cols = [{ key: 'name', label: '산업' }, { key: 'output', label: '총산출', num: true, fmt: (v) => K(v) },
+    { key: 'va_rate', label: '부가가치율', num: true, fmt: (v) => pc(v) }, { key: 'prod', label: '생산유발', num: true, fmt: (v) => fmt(v, 3) },
+    { key: 'influence', label: '영향력', num: true, fmt: (v) => fmt(v, 2) }, { key: 'sensitivity', label: '감응도', num: true, fmt: (v) => fmt(v, 2) },
+    { key: 'imp_dep', label: '수입의존도', num: true, fmt: (v) => pc(v) }];
+  if (mu.employment) cols.push({ key: 'emp', label: '취업유발(명)', num: true, fmt: (v) => fmt(v, 1) });
+  const best = (k) => rows.slice().sort((a, b) => b[k] - a[k])[0].name;
+  return [cP(secs.map((x) => x.name).join(' vs ') + ' 비교 (' + lvl + ' 기준)'), cTable(cols, rows),
+    cP('생산유발계수는 ', { b: best('prod') }, ', 부가가치율은 ', { b: best('va_rate') }, mu.employment ? ', 일자리 효과는 ' : '', mu.employment ? { b: best('emp') } : '', '에서 가장 큽니다.'),
+    rows.map((r) => r.quadrant).some(Boolean) ? cNote('유형: ' + rows.map((r) => r.name + ' ' + (r.quadrant || '').split(' ')[0]).join(' · ')) : null];
+}
+
+async function chatRank(metric, qn, key, lvl) {
+  const src = metric.src === 'st' ? (await getCached('structure', 'structure', [key])).rows : (await getCached('mult', 'multipliers', [key])).rows;
+  const st = (await getCached('structure', 'structure', [key])).rows;
+  const share = Object.fromEntries(st.map((r) => [r.code, r.output_share]));
+  const asc = /(낮은|작은|적은|하위|최저)/.test(qn);
+  const nm = Number((qn.match(/(\d+)\s*개/) || [])[1]) || 5;
+  const rows = src.filter((r) => r[metric.key] != null && !r.zero && (share[r.code] ?? 0) >= MIN_SHARE && (metric.key !== 'emp' || r.emp > 0))
+    .sort((a, b) => (asc ? a[metric.key] - b[metric.key] : b[metric.key] - a[metric.key])).slice(0, Math.min(nm, 15));
+  return [cP(metric.label + ' ' + (asc ? '낮은' : '높은') + ' 산업 ' + rows.length + '개 (' + lvl + ' 기준, ' + metric.note + ')'),
+    cTable([{ key: 'rk', label: '순위' }, { key: 'name', label: '산업' }, { key: metric.key, label: metric.label + (metric.unit ? '(' + metric.unit + ')' : ''), num: true, fmt: (v) => fmt(v, metric.d) }],
+      rows.map((r, i) => ({ ...r, rk: i + 1 }))),
+    cNote('산출 비중 ' + MIN_SHARE + '% 미만인 아주 작은 부문은 제외했습니다.')];
+}
+
+async function chatMacro(key, lvl) {
+  const st = await getCached('structure', 'structure', [key]);
+  const m = Object.fromEntries(st.macro.map((x) => [x.name, x.value]));
+  return [cP('2023년 한국 경제 전체 (한국은행 산업연관표, 조원)'), cCards([
+    { k: '총공급', v: fmt(m['총공급(=총수요)'], 1) + '조원', t: '총산출 ' + fmt(m['총산출'], 1) + ' + 수입 ' + fmt(m['수입'], 1) },
+    { k: '부가가치', v: fmt(m['부가가치'], 1) + '조원', t: '부가가치율 ' + pc(m['부가가치율']) },
+    { k: '중간투입', v: fmt(m['중간투입'], 1) + '조원', t: '중간투입률 ' + pc(m['중간투입률']) + ' · 수입의존도 ' + pc(m['수입의존도(수입 중간투입률)']) },
+    { k: '최종수요 구성', v: '소비 ' + pc(m['최종수요 중 소비 비중']), t: '투자 ' + pc(m['최종수요 중 투자 비중']) + ' · 수출 ' + pc(m['최종수요 중 수출 비중']) },
+  ]), cNote('전산업 지표는 어느 분류로 계산해도 같습니다.')];
+}
+
+async function chatCompare(sec, amt) {
+  await clsList();
+  const rows = state.clsRows;
+  let b = rows.find((r) => r.basic_name === sec.word || r.basic === sec.code);
+  if (!b) {
+    const lvKey = LEVELS.find((lv) => rows.some((r) => r[lv + '_name'] === sec.word)) || state.active;
+    const members = rows.filter((r) => r[lvKey + '_name'] === sec.word || r[state.active] === sec.code);
+    const bx = state.loaded.basic ? Object.fromEntries((await getCached('structure', 'structure', ['basic'])).rows.map((r) => [r.code, r.output])) : {};
+    b = members.sort((p, q) => (bx[q.basic] || 0) - (bx[p.basic] || 0))[0];
+  }
+  if (!b) return [cP('비교할 기본부문을 찾지 못했어요.')];
+  const d = await call('compare', [b.basic, amt != null ? Math.abs(amt) : 1000000]);
+  const loaded = d.levels.filter((r) => r.loaded);
+  const out = [cP({ b: b.basic_name }, '(' + b.basic + ')에 ', { b: K(d.amount) }, ' 수요가 생길 때, 분류별 표로 계산한 생산유발액')];
+  out.push(cTable([{ key: 'label', label: '분류' }, { key: 'name', label: '해당 부문' }, { key: 'prod', label: '생산유발계수', num: true, fmt: (v) => (v == null ? '미로드' : fmt(v, 3)) },
+    { key: 'sim_prod', label: '생산유발액', num: true, fmt: (v) => (v == null ? '–' : K(v)) }], d.levels));
+  if (loaded.length >= 2) {
+    const lo = loaded[0], hi = loaded[loaded.length - 1];
+    out.push(cP(josa(lo.label.replace(/\(.*\)/, ''), '과', '와') + ' ' + hi.label.replace(/\(.*\)/, '') + '의 차이는 ', { b: pc((hi.sim_prod / lo.sim_prod - 1) * 100) }, ' — 상위 분류가 투입구조가 다른 산업을 평균해서 생기는 집계 편의입니다.'));
+  } else out.push(cNote('두 개 이상의 분류를 불러오면 차이를 비교할 수 있어요. 「4개 분류 모두 불러오기」를 눌러 주세요.'));
+  out.push(el('div', { class: 'chat-actions' }, cGo('분류수준 비교 화면에서 보기', 'compare', async () => { await clsList(); $('cp-q').value = ''; cpPicker.fill(b.basic); })));
+  return out;
+}
+
+async function chatSend(text) {
+  const q = (text ?? $('chat-input').value).trim();
+  if (!q || chat.busy) return;
+  $('chat-input').value = '';
+  chatEl('user', q);
+  const wait = chatEl('bot', el('span', { class: 'chat-typing', text: '계산 중…' }));
+  chat.busy = true; $('chat-send').disabled = true;
+  try {
+    const parts = (await chatAnswer(q)).flat().filter(Boolean);
+    wait.querySelector('.chat-bubble').replaceChildren(...parts);
+  } catch (e) {
+    wait.querySelector('.chat-bubble').replaceChildren(cP('계산 중 문제가 생겼어요: ' + e.message), chatExamples());
+  } finally {
+    chat.busy = false; $('chat-send').disabled = false;
+    $('chat-log').scrollTop = $('chat-log').scrollHeight;
+    $('chat-input').focus();
+  }
+}
+$('chat-form').addEventListener('submit', (e) => { e.preventDefault(); chatSend(); });
+$('chat-clear').addEventListener('click', () => { $('chat-log').replaceChildren(); chatGreet(); });
+function chatGreet() {
+  chatEl('bot', ...chatHelp('안녕하세요! 산업연관표 분석 도우미입니다. 산업 이름과 궁금한 것을 자연스럽게 물어보세요.'));
+}
+chatGreet();
 
 /* ---------------- 시작 ---------------- */
 renderBasket();
