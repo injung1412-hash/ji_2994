@@ -6,7 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from modules import compare, feedback, profile, report, scenario, simulation
+from modules import compare, counsel, feedback, profile, report, scenario, simulation
 
 PROFILE = profile.build_profile("2026-2", 3.8, 18, 25)
 
@@ -382,6 +382,84 @@ class FeedbackTest(unittest.TestCase):
         feedback.record_result(0, 3.5, 4, "후기", self.path)
         with self.assertRaises(ValueError):
             scenario.save_plan(PROFILE, plans(10), self.path)
+
+
+
+class FakeStream:
+    def __init__(self, parts, stop="end_turn"):
+        self.text_stream, self.stop = iter(parts), stop
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+    def get_final_message(self):
+        return type("Final", (), {"stop_reason": self.stop})()
+
+
+class FakeClient:
+    """Claude 대신 쓰는 가짜 클라이언트: 요청을 기록하고 정해 둔 글을 흘려보냅니다."""
+    def __init__(self, parts, stop="end_turn", old_sdk=False):
+        self.calls = []
+        outer = self
+
+        class Messages:
+            def stream(self, **kw):
+                outer.calls.append(("plain", kw))
+                return FakeStream(parts, stop)
+
+        class BetaMessages:
+            def stream(self, **kw):
+                if old_sdk:
+                    raise TypeError("unexpected keyword argument 'fallbacks'")
+                outer.calls.append(("beta", kw))
+                return FakeStream(parts, stop)
+
+        self.messages = Messages()
+        self.beta = type("Beta", (), {"messages": BetaMessages()})()
+
+
+class CounselTest(unittest.TestCase):
+    def setUp(self):
+        self.table = compare.compare(simulation.run(PROFILE, plans(30, 5, 10), ask=no_ai)["rows"], 25)
+
+    def test_context_has_numbers_not_identity(self):
+        text = counsel.build_context(PROFILE, self.table, target=3.9)
+        self.assertIn("인턴 병행", text)
+        self.assertIn("예상 학점 3.40", text)
+        self.assertIn("5시간 부족", text)
+        self.assertIn("목표 학점 3.90", text)
+        self.assertNotIn("학번", text)
+        self.assertIn("아직 프로필", counsel.build_context(None, None))
+
+    def test_offline_answers_quick_questions(self):
+        q = counsel.QUICK_QUESTIONS
+        best = counsel.offline_reply(q[0], PROFILE, self.table)
+        self.assertLess(best.index("학점 집중"), best.index("인턴 병행"))   # 예상 학점 높은 순
+        self.assertIn("5시간 부족", counsel.offline_reply(q[1], PROFILE, self.table))
+        self.assertIn("먼저 넣어 주세요", counsel.offline_reply(q[2], PROFILE, self.table))
+        self.assertIn("목표 학점 3.90", counsel.offline_reply(q[2], PROFILE, self.table, target=3.9))
+        self.assertIn("기록이 없어서", counsel.offline_reply(q[3], PROFILE, self.table))
+        self.assertIn("프로필", counsel.offline_reply(q[0], None, None))
+        self.assertIn("기본 상담", counsel.offline_reply("아무 질문", PROFILE, self.table))
+
+    def test_stream_reply_uses_fallback_and_context(self):
+        client = FakeClient(["인턴은 ", "주 5시간까지예요."])
+        history = [{"role": "user", "content": "인턴 해도 돼?"}]
+        text = "".join(counsel.stream_reply(history, "내 숫자", client=client, model="claude-opus-5-5"))
+        self.assertEqual(text, "인턴은 주 5시간까지예요.")
+        kind, kw = client.calls[0]
+        self.assertEqual((kind, kw["fallbacks"], kw["model"]), ("beta", "default", "claude-opus-5-5"))
+        self.assertIn("내 숫자", kw["system"][1]["text"])
+        self.assertEqual(kw["messages"], history)
+
+    def test_stream_reply_old_sdk_and_refusal(self):
+        client = FakeClient(["답"], stop="refusal", old_sdk=True)
+        text = "".join(counsel.stream_reply([{"role": "user", "content": "x"}], "c", client=client, model="m"))
+        self.assertEqual(client.calls[0][0], "plain")
+        self.assertIn("답할 수 없습니다", text)
 
 
 if __name__ == "__main__":

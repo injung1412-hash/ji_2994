@@ -23,6 +23,7 @@ if __name__ == "__main__" and not st.runtime.exists():
 
 
 from modules import compare as compare_mod
+from modules import counsel as counsel_mod
 from modules import feedback as feedback_mod
 from modules import profile as profile_mod
 from modules import report as report_mod
@@ -32,7 +33,7 @@ from modules import ui
 
 
 APP_TITLE = "AI 대학생활 시뮬레이션 시스템"
-MENUS = ["🏠 홈", "👤 프로필", "🔀 선택지", "📊 결과·보고서", "⏱️ 학기 중 점검", "📝 학기 말 기록", "🗂️ 기록 관리"]
+MENUS = ["🏠 홈", "👤 프로필", "🔀 선택지", "📊 결과·보고서", "💬 AI 상담", "⏱️ 학기 중 점검", "📝 학기 말 기록", "🗂️ 기록 관리"]
 
 st.set_page_config(page_title=APP_TITLE, page_icon="🎓", layout="wide")
 ui.inject_css()
@@ -219,15 +220,17 @@ with st.sidebar:
     st.caption("기록 파일: data/simulation_log.csv")
 
 if st.session_state.pop("scroll_to_top", False):
+    # 채팅 화면(💬 AI 상담)에서는 본문 영역 이름이 stMain 대신 stAppScrollToBottomContainer입니다
+    MAIN = "[data-testid=\"stMain\"], [data-testid=\"stAppScrollToBottomContainer\"]"
     try:
         st.html(
-            "<script>document.querySelector('[data-testid=\"stMain\"]').scrollTo(0, 0);</script>",
+            f"<script>document.querySelector('{MAIN}')?.scrollTo(0, 0);</script>",
             unsafe_allow_javascript=True,
         )
     except TypeError:   # Streamlit 1.52 이전에는 unsafe_allow_javascript가 없어 빈 iframe으로 대신합니다
         import streamlit.components.v1 as components
         components.html(
-            "<script>window.parent.document.querySelector('[data-testid=\"stMain\"]').scrollTo(0, 0);</script>",
+            f"<script>window.parent.document.querySelector('{MAIN}')?.scrollTo(0, 0);</script>",
             height=0,
         )
 
@@ -472,12 +475,81 @@ elif menu == "📊 결과·보고서":
     with st.container(border=True):
         st.markdown(report_mod.make_report(table))
 
-    c1, c2, _ = st.columns([1, 1, 2])
+    c1, c2, c3 = st.columns(3)
     if c1.button("🔄 AI 보정 다시 받기", use_container_width=True):
         run_simulation()
         go_to("📊 결과·보고서", "시뮬레이션을 다시 실행했습니다.")
-    if c2.button("📝 학기 말에 실제 결과 기록하기", type="primary", use_container_width=True):
+    if c2.button("💬 이 결과로 상담하기", use_container_width=True):
+        go_to("💬 AI 상담")
+    if c3.button("📝 학기 말에 실제 결과 기록하기", type="primary", use_container_width=True):
         go_to("📝 학기 말 기록")
+
+
+elif menu == "💬 AI 상담":
+    ui.page_header("💬", "상담", "AI 상담", "내 계산 결과를 바탕으로 선택을 함께 고민합니다. 결정은 내가 합니다.")
+    ready, why = counsel_mod.ai_ready()
+    if ready:
+        st.info("Claude가 내 계산 결과(프로필 · 선택지 · 예상 학점 · 지난 기록)를 읽고 답합니다. 대화는 저장하지 않습니다.", icon="🤖")
+    else:
+        st.warning(f"기본 상담 모드입니다 — {why}. 빠른 질문에는 계산 결과로 바로 답합니다.", icon="💡")
+    st.caption(
+        "⚠️ 다른 사람 이름이나 연락처는 적지 마세요. AI 상담에서는 질문과 내 계산 결과가 Claude API로 보내집니다. "
+        "예상 학점은 추정치이며, 결정은 내가 합니다."
+    )
+    chat = st.session_state.setdefault("counsel", [])
+    target_value = st.session_state.get("target_value")
+    context_args = dict(
+        profile=st.session_state.profile, table=st.session_state.table,
+        personal=st.session_state.get("personal"), records=records, target=target_value,
+    )
+
+    asked = None
+    cols = st.columns(len(counsel_mod.QUICK_QUESTIONS))
+    for col, quick in zip(cols, counsel_mod.QUICK_QUESTIONS):
+        if col.button(quick, key=f"quick_{quick}", use_container_width=True):
+            asked = quick
+
+    if not chat:
+        ui.callout(
+            "🗨️",
+            "예를 들어 이렇게 물어보세요: <b>인턴을 하면서 장학금 기준을 지킬 수 있을까?</b> · "
+            "<b>동아리를 줄이면 얼마나 달라져?</b> · <b>지난 학기에 시간이 부족했던 이유가 뭘까?</b>",
+        )
+    for message in chat:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+    typed = st.chat_input("고민을 적어 보세요 (예: 인턴을 하면서 장학금을 지킬 수 있을까?)")
+    question = (typed or asked or "").strip()
+    if question:
+        chat.append({"role": "user", "content": question})
+        with st.chat_message("user"):
+            st.markdown(question)
+        with st.chat_message("assistant"):
+            if ready:
+                context = counsel_mod.build_context(
+                    span=st.session_state.get("range_info"), **context_args
+                )
+
+                def safe_stream():
+                    try:
+                        yield from counsel_mod.stream_reply(chat, context)
+                    except ValueError as error:
+                        yield (
+                            f"\n\n(AI 상담에 실패했습니다 — {error}. 계산 결과로 답합니다.)\n\n"
+                            + counsel_mod.offline_reply(question, **context_args)
+                        )
+
+                answer = st.write_stream(safe_stream())
+                answer = answer if isinstance(answer, str) else "".join(map(str, answer))
+            else:
+                answer = counsel_mod.offline_reply(question, **context_args)
+                st.markdown(answer)
+        chat.append({"role": "assistant", "content": answer})
+
+    if chat and st.button("🗑️ 대화 지우기"):
+        st.session_state.counsel = []
+        st.rerun()
 
 
 elif menu == "⏱️ 학기 중 점검":
