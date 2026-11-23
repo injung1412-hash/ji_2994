@@ -536,13 +536,13 @@ elif menu == "💬 AI 상담":
                     except ValueError as error:
                         yield (
                             f"\n\n(AI 상담에 실패했습니다 — {error}. 계산 결과로 답합니다.)\n\n"
-                            + counsel_mod.offline_reply(question, **context_args)
+                            + counsel_mod.offline_reply(question, history=chat, **context_args)
                         )
 
                 answer = st.write_stream(safe_stream())
                 answer = answer if isinstance(answer, str) else "".join(map(str, answer))
             else:
-                answer = counsel_mod.offline_reply(question, **context_args)
+                answer = counsel_mod.offline_reply(question, history=chat, **context_args)
                 st.markdown(answer)
         chat.append({"role": "assistant", "content": answer})
 

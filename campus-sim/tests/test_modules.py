@@ -449,7 +449,7 @@ class CounselTest(unittest.TestCase):
         self.assertIn("먼저 넣어 주세요", counsel.offline_reply(q[2], PROFILE, self.table))
         self.assertIn("목표 학점 3.90", counsel.offline_reply(q[2], PROFILE, self.table, target=3.9))
         self.assertIn("기록이 없어요", counsel.offline_reply(q[3], PROFILE, self.table))
-        self.assertIn("기본 상담", counsel.offline_reply("아무 질문", PROFILE, self.table))
+        self.assertIn("주제를 잘 찾지 못했어요", counsel.offline_reply("아무 질문", PROFILE, self.table))
 
     def test_offline_without_profile_or_records(self):
         self.assertEqual(counsel.quick_questions(None, []), counsel.START_QUESTIONS)
@@ -457,7 +457,8 @@ class CounselTest(unittest.TestCase):
         for quick in counsel.START_QUESTIONS:
             self.assertTrue(counsel.offline_reply(quick))          # 아무것도 없어도 답함
         self.assertIn("109", counsel.offline_reply("요즘 너무 지쳐"))
-        self.assertIn("자유 시간", counsel.offline_reply("어떤 선택지가 학점에 유리해?"))
+        self.assertIn("아직 비교한 선택지가 없어서", counsel.offline_reply("어떤 선택지가 학점에 유리해?"))
+        self.assertIn("하루로 나누면 매일 약 2.1시간", counsel.offline_reply("인턴 15시간 하면?"))
 
     def test_offline_with_records_only(self):
         records = [RECORD, {**RECORD, "term": "2026-2", "scenario_option": "동아리 확대", "satisfaction": "2",
@@ -487,6 +488,30 @@ class CounselTest(unittest.TestCase):
         text = "".join(counsel.stream_reply([{"role": "user", "content": "x"}], "c", client=client, model="m"))
         self.assertEqual(client.calls[0][0], "plain")
         self.assertIn("답할 수 없습니다", text)
+
+    def test_offline_answers_fit_each_question(self):
+        ask = lambda q, **kw: counsel.offline_reply(q, PROFILE, self.table, **kw)   # noqa: E731
+        questions = ["인턴 해도 될까?", "알바해야 해", "동아리 계속할까?", "시험 기간엔?", "학점 망쳤어", "장학금 지키려면?",
+                     "토익 준비할까", "잠을 못 자", "자꾸 미뤄", "수강 몇학점", "휴학할까", "진로가 고민", "너무 고민돼",
+                     "인턴 20시간 하면?", "인턴이랑 동아리 중 뭐가 나아?", "안녕"]
+        answers = [ask(q) for q in questions]
+        self.assertEqual(len(set(answers)), len(questions))           # 질문마다 다른 답
+        self.assertIn("주 15시간 → **3.70**", answers[0])             # 내 프로필로 시간별 예상 학점
+        self.assertIn("예상 학점 **3.60**", answers[13])               # 질문 속 시간으로 계산
+        self.assertIn("남는 자유 시간 **5시간**", answers[13])
+        combo = ask("인턴 10시간 공부 5시간 하면 어때")
+        self.assertIn("인턴 10시간 + 공부 5시간", combo)
+        self.assertIn("예상 학점 **3.85**", combo)
+        self.assertIn("168시간", ask("인턴 1000시간 하면?"))
+        self.assertIn("인턴 병행", answers[14])
+        self.assertIn("동아리 확대", answers[14])
+        self.assertIn("행사", ask("동아리 계속할까?", records=[{**RECORD, "scenario_option": "동아리 확대", "user_review": "행사 때 바빴다"}]))
+
+    def test_offline_follow_up_uses_previous_topic(self):
+        history = [{"role": "user", "content": "인턴 해도 될까?"}, {"role": "assistant", "content": "…"},
+                   {"role": "user", "content": "더 자세히"}]
+        self.assertIn("현장실습", counsel.offline_reply("더 자세히", PROFILE, self.table, history=history))
+        self.assertIn("조금만 더 적어", counsel.offline_reply("왜?", history=[{"role": "user", "content": "왜?"}]))
 
 
 if __name__ == "__main__":
