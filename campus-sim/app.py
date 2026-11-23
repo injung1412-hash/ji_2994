@@ -486,15 +486,17 @@ elif menu == "📊 결과·보고서":
 
 
 elif menu == "💬 AI 상담":
-    ui.page_header("💬", "상담", "AI 상담", "내 계산 결과를 바탕으로 선택을 함께 고민합니다. 결정은 내가 합니다.")
+    ui.page_header("💬", "상담", "AI 상담", "고민을 편하게 적어 보세요. 입력한 결과나 학기 말 기록이 있으면 그걸 바탕으로 답합니다.")
     ready, why = counsel_mod.ai_ready()
-    if ready:
-        st.info("Claude가 내 계산 결과(프로필 · 선택지 · 예상 학점 · 지난 기록)를 읽고 답합니다. 대화는 저장하지 않습니다.", icon="🤖")
-    else:
-        st.warning(f"기본 상담 모드입니다 — {why}. 빠른 질문에는 계산 결과로 바로 답합니다.", icon="💡")
+    has_table = bool(st.session_state.profile and st.session_state.table)
+    known = [
+        f"선택지 {len(st.session_state.table['rows'])}개" if has_table else None,
+        f"학기 말 기록 {len(records)}건" if records else None,
+    ]
+    known = " · ".join(k for k in known if k) or "아직 없음 (입력 없이도 상담할 수 있어요)"
     st.caption(
-        "⚠️ 다른 사람 이름이나 연락처는 적지 마세요. AI 상담에서는 질문과 내 계산 결과가 Claude API로 보내집니다. "
-        "예상 학점은 추정치이며, 결정은 내가 합니다."
+        f"{'🤖 AI 상담' if ready else '💡 기본 상담'} · 참고하는 정보: {known} · 다른 사람 이름이나 연락처는 적지 마세요."
+        + (" 질문과 참고 정보는 Claude API로 보내집니다." if ready else "")
     )
     chat = st.session_state.setdefault("counsel", [])
     target_value = st.session_state.get("target_value")
@@ -504,24 +506,21 @@ elif menu == "💬 AI 상담":
     )
 
     asked = None
-    cols = st.columns(len(counsel_mod.QUICK_QUESTIONS))
-    for col, quick in zip(cols, counsel_mod.QUICK_QUESTIONS):
-        if col.button(quick, key=f"quick_{quick}", use_container_width=True):
-            asked = quick
-
-    if not chat:
-        ui.callout(
-            "🗨️",
-            "예를 들어 이렇게 물어보세요: <b>인턴을 하면서 장학금 기준을 지킬 수 있을까?</b> · "
-            "<b>동아리를 줄이면 얼마나 달라져?</b> · <b>지난 학기에 시간이 부족했던 이유가 뭘까?</b>",
-        )
+    chips = st.empty()
+    if not chat:   # 대화를 시작하기 전에만 빠른 질문을 보여 줍니다
+        quick_list = counsel_mod.quick_questions(st.session_state.table if has_table else None, records)
+        cols = chips.container().columns(len(quick_list))
+        for col, quick in zip(cols, quick_list):
+            if col.button(quick, key=f"quick_{quick}", use_container_width=True):
+                asked = quick
     for message in chat:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
 
-    typed = st.chat_input("고민을 적어 보세요 (예: 인턴을 하면서 장학금을 지킬 수 있을까?)")
+    typed = st.chat_input("고민을 적어 보세요 (예: 지난 학기 기록을 보고 다음 학기 계획을 도와줘)")
     question = (typed or asked or "").strip()
     if question:
+        chips.empty()
         chat.append({"role": "user", "content": question})
         with st.chat_message("user"):
             st.markdown(question)
