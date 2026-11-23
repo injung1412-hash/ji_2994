@@ -421,6 +421,10 @@ class FakeClient:
         self.beta = type("Beta", (), {"messages": BetaMessages()})()
 
 
+RECORD = {"term": "2026-1", "scenario_option": "인턴 병행", "actual_gpa": "3.5", "satisfaction": "4",
+          "user_review": "피곤했지만 배운 게 많음", "predicted_gpa": 3.7, "error": -0.2}
+
+
 class CounselTest(unittest.TestCase):
     def setUp(self):
         self.table = compare.compare(simulation.run(PROFILE, plans(30, 5, 10), ask=no_ai)["rows"], 25)
@@ -432,7 +436,10 @@ class CounselTest(unittest.TestCase):
         self.assertIn("5시간 부족", text)
         self.assertIn("목표 학점 3.90", text)
         self.assertNotIn("학번", text)
-        self.assertIn("아직 프로필", counsel.build_context(None, None))
+        self.assertIn("일반적인 시간 관리", counsel.build_context(None, None))
+        only_records = counsel.build_context(None, None, records=[RECORD])
+        self.assertIn("실제 3.5", only_records)
+        self.assertIn("아직 비교하지", only_records)
 
     def test_offline_answers_quick_questions(self):
         q = counsel.QUICK_QUESTIONS
@@ -441,9 +448,29 @@ class CounselTest(unittest.TestCase):
         self.assertIn("5시간 부족", counsel.offline_reply(q[1], PROFILE, self.table))
         self.assertIn("먼저 넣어 주세요", counsel.offline_reply(q[2], PROFILE, self.table))
         self.assertIn("목표 학점 3.90", counsel.offline_reply(q[2], PROFILE, self.table, target=3.9))
-        self.assertIn("기록이 없어서", counsel.offline_reply(q[3], PROFILE, self.table))
-        self.assertIn("프로필", counsel.offline_reply(q[0], None, None))
+        self.assertIn("기록이 없어요", counsel.offline_reply(q[3], PROFILE, self.table))
         self.assertIn("기본 상담", counsel.offline_reply("아무 질문", PROFILE, self.table))
+
+    def test_offline_without_profile_or_records(self):
+        self.assertEqual(counsel.quick_questions(None, []), counsel.START_QUESTIONS)
+        self.assertEqual(counsel.quick_questions(self.table, []), counsel.QUICK_QUESTIONS[:3])
+        for quick in counsel.START_QUESTIONS:
+            self.assertTrue(counsel.offline_reply(quick))          # 아무것도 없어도 답함
+        self.assertIn("109", counsel.offline_reply("요즘 너무 지쳐"))
+        self.assertIn("자유 시간", counsel.offline_reply("어떤 선택지가 학점에 유리해?"))
+
+    def test_offline_with_records_only(self):
+        records = [RECORD, {**RECORD, "term": "2026-2", "scenario_option": "동아리 확대", "satisfaction": "2",
+                            "actual_gpa": "3.9", "predicted_gpa": 3.8, "error": 0.1, "user_review": "바빴다"}]
+        self.assertEqual(counsel.quick_questions(None, records), counsel.RECORD_QUESTIONS)
+        summary = counsel.offline_reply(counsel.RECORD_QUESTIONS[0], records=records)
+        self.assertIn("학기 말 기록 2건", summary)
+        self.assertIn("만족도가 가장 높았던 건 **인턴 병행**", summary)
+        self.assertIn("“바빴다”", summary)
+        tip = counsel.offline_reply(counsel.RECORD_QUESTIONS[2], records=records)
+        self.assertIn("동아리 확대", tip)                          # 만족도 낮았던 선택지 짚기
+        # 비교 결과가 있어도 기록 질문엔 기록으로 답함
+        self.assertIn("학기 말 기록 2건", counsel.offline_reply("지난 기록 정리해 줘", PROFILE, self.table, records=records))
 
     def test_stream_reply_uses_fallback_and_context(self):
         client = FakeClient(["인턴은 ", "주 5시간까지예요."])
