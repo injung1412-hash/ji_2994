@@ -411,18 +411,13 @@ elif menu == "📊 결과":
         st.error(warning)
     ui.option_cards(table)
 
-    tab_names = ["📈 차트", "🎯 목표", "📋 비교표", "🧮 계산 근거"]
-    try:   # 목표 학점을 바꿔 화면이 다시 그려져도 보던 탭을 그대로 둡니다(Streamlit 1.67+)
-        tab_chart, tab_target, tab_table, tab_reason = st.tabs(tab_names, key="result_tab", on_change="rerun")
-    except TypeError:
-        tab_chart, tab_target, tab_table, tab_reason = st.tabs(tab_names)
-    with tab_chart:
+    def view_chart():
         c1, c2 = st.columns(2)
         with c1:
             ui.time_chart(table)
         with c2:
             ui.gpa_chart(table, st.session_state.profile["current_gpa"])
-    with tab_target:
+    def view_target():
         c1, c2 = st.columns([1, 3], vertical_alignment="center")
         target = target_input(c1, "target_result")
         c2.caption("목표를 지키려면 활동은 최대 몇 시간, 공부는 최소 몇 시간인지 알려 줍니다.")
@@ -432,9 +427,9 @@ elif menu == "📊 결과":
                 for index, row in enumerate(table["rows"])
             ]
         )
-    with tab_table:
+    def view_table():
         st.dataframe(compare_mod.table_rows(table), hide_index=True, use_container_width=True)
-    with tab_reason:
+    def view_reason():
         personal = st.session_state.get("personal") or {"value": 0, "count": 0, "text": ""}
         span = st.session_state.get("range_info") or {"width": simulation_mod.RANGE_DEFAULT, "text": ""}
         st.markdown(
@@ -453,6 +448,17 @@ elif menu == "📊 결과":
             f"기준값({simulation_mod.SPARE_RATIO}, {simulation_mod.HOUR_WEIGHT}, {simulation_mod.BASE_CREDITS}, "
             f"{simulation_mod.CREDIT_WEIGHT}, 공부 {simulation_mod.STUDY_WEIGHT})과 AI 보정 폭 ±{simulation_mod.AI_LIMIT}은 검증 전 가정입니다."
         )
+
+    views = {"📈 차트": view_chart, "🎯 목표": view_target, "📋 비교표": view_table, "🧮 계산 근거": view_reason}
+    try:   # 목표 학점을 바꿔 화면이 다시 그려져도 보던 탭을 그대로 둡니다(Streamlit 1.67+)
+        tabs = st.tabs(list(views), key="result_tab", on_change="rerun")
+    except TypeError:   # 탭이 선택을 기억하지 못하는 이전 버전: 선택을 기억하는 버튼 묶음으로 대신합니다
+        picked = st.segmented_control("보기", list(views), default="📈 차트", key="result_view", label_visibility="collapsed")
+        views[picked or "📈 차트"]()
+    else:
+        for tab, view in zip(tabs, views.values()):
+            with tab:
+                view()
 
     c1, c2 = st.columns(2)
     if c1.button("📄 보고서 보기", type="primary", use_container_width=True):
