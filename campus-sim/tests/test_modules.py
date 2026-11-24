@@ -322,7 +322,7 @@ class CompareReportTest(unittest.TestCase):
     def test_report_has_notice_and_no_single_answer(self):
         text = report.make_report(self.table(15, 5, 30))
         self.assertIn("추정치이며 결과를 보장하지 않습니다", text)
-        self.assertIn("결정은 내가 합니다", text)
+        self.assertIn("결정은 AI가 아니라 사용자가 합니다", text)
         self.assertIn("시간 부족", text)
         for word in ["추천", "정답"]:
             self.assertNotIn(word, text)
