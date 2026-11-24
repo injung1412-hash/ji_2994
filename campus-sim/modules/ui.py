@@ -4,7 +4,7 @@ from html import escape
 import streamlit as st
 
 SERIES = ["#2a78d6", "#eb6834", "#1baf7a"]   # 선택지 1 · 2 · 3 색
-STEPS = [("👤", "프로필"), ("🔀", "선택지"), ("📊", "결과·보고서"), ("📝", "학기 말 기록")]
+STEPS = [("👤", "프로필"), ("🔀", "선택지"), ("📊", "결과"), ("📝", "학기 말 기록")]
 
 CSS = """
 <style>
@@ -62,11 +62,13 @@ h1, h2, h3 { letter-spacing: -0.02em; }
 .cs-hero .emoji { position: absolute; right: 44px; top: 50%; transform: translateY(-50%); font-size: 88px; opacity: .9; }
 @media (max-width: 760px) { .cs-hero { padding: 28px 22px; } .cs-hero .emoji { display: none; } }
 
-.cs-page { display: flex; align-items: center; gap: 16px; margin: 0 0 18px; }
+.cs-page { display: flex; align-items: center; gap: 14px; margin: 0 0 22px; }
 .cs-page .ic { flex: none; width: 54px; height: 54px; border-radius: 16px; display: grid; place-items: center; font-size: 26px;
   background: var(--cs-soft); }
 .cs-page .s { font-size: 13px; font-weight: 800; color: var(--cs-brand); letter-spacing: .04em; }
-.cs-page h2 { margin: 0; padding: 0; font-size: 28px; }
+.cs-page h2 { margin: 0; padding: 0; font-size: 26px; }
+[data-testid="stMarkdownContainer"] table { display: block; overflow-x: auto; }
+[data-testid="stMarkdownContainer"] th, [data-testid="stMarkdownContainer"] td { white-space: nowrap; }
 .cs-page p { margin: 2px 0 0; color: var(--cs-muted); font-size: 15px; }
 
 .cs-stepper { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 0 0 24px; }
@@ -218,10 +220,11 @@ def hero(kicker: str, title: str, text: str, emoji: str = "🎓") -> None:
     )
 
 
-def page_header(icon: str, step: str, title: str, text: str) -> None:
+def page_header(icon: str, title: str, text: str = "") -> None:
+    """화면 제목: 아이콘 + 제목 + (있으면) 짧은 한 줄"""
     html(
-        f'<div class="cs-page"><div class="ic">{icon}</div><div><div class="s">{escape(step)}</div>'
-        f"<h2>{escape(title)}</h2><p>{escape(text)}</p></div></div>"
+        f'<div class="cs-page"><div class="ic">{icon}</div><div>'
+        f"<h2>{escape(title)}</h2>" + (f"<p>{escape(text)}</p>" if text else "") + "</div></div>"
     )
 
 
@@ -245,10 +248,10 @@ def stats(items: list) -> None:
 
 def flow() -> None:
     steps = [
-        ("👤", "① 프로필", "이번 학기 내 상황", "학기 · 현재 학점 · 수강 학점 · 주간 자유 시간"),
-        ("🔀", "② 선택지", "비교할 선택지 1~3개", "주간 투입 시간과 세부 조건(글)"),
-        ("📊", "③ 결과·보고서", "같은 기준의 비교", "남는 시간 · 예상 학점 · 시간 부족 경고"),
-        ("📝", "④ 학기 말 기록", "실제 결과 기록", "실제 학점 · 만족도 · 후기 → 다음 학기 반영"),
+        ("👤", "① 프로필", "내 상황 입력", "학점 · 수강 학점 · 자유 시간"),
+        ("🔀", "② 선택지", "후보 1~3개", "활동과 주간 시간"),
+        ("📊", "③ 결과 · 보고서", "한눈에 비교", "예상 학점 · 남는 시간"),
+        ("📝", "④ 학기 말 기록", "실제 결과", "다음 학기 예측에 반영"),
     ]
     cells = "".join(
         f'<div><div class="e">{e}</div><div class="n">{n}</div><b>{b}</b><p>{p}</p></div>' for e, n, b, p in steps
@@ -286,17 +289,10 @@ def option_cards(table: dict) -> None:
         badges = []
         if row["short"]:
             badges.append(f'<span class="cs-pill warn">⚠️ {fmt(-row["free_left"])}시간 부족</span>')
-        else:
-            badges.append('<span class="cs-pill ok">✓ 시간 안에 가능</span>')
-        if row.get("all_study"):
-            badges.append('<span class="cs-pill info">📚 공부 시간으로 계산</span>')
-        elif row.get("study"):
-            badges.append(f'<span class="cs-pill info">📚 공부 {fmt(row["study_hours"])}시간 포함</span>')
         if len(rows) > 1 and row["expected_gpa"] == top_gpa:
-            badges.append('<span class="cs-pill info">예상 학점 가장 높음</span>')
+            badges.append('<span class="cs-pill info">🏆 학점 최고</span>')
         if len(rows) > 1 and row["free_left"] == top_free:
-            badges.append('<span class="cs-pill info">남는 시간 가장 많음</span>')
-        ai = f"{row['adjust']:+.2f}" if row["ai_used"] else "없음"
+            badges.append('<span class="cs-pill ok">🕒 여유 최고</span>')
         acts = row.get("activities") or []
         breakdown = (
             '<div class="cs-acts">' + "".join(
@@ -311,10 +307,9 @@ def option_cards(table: dict) -> None:
             f'<div class="big">{row["expected_gpa"]:.2f}<small>예상 학점</small></div>'
             + (f'<div class="rng">예상 범위 {row["range"][0]:.2f} ~ {row["range"][1]:.2f}</div>' if row.get("range") else "")
             + breakdown +
-            f'<div class="kv"><span>주간 투입 시간</span><b>{fmt(row["scenario_hours"])}시간</b></div>'
-            f'<div class="kv"><span>남는 자유 시간</span><b>{fmt(row["free_left"])}시간</b></div>'
-            f'<div class="kv"><span>계산식 · 내 기록 · AI</span><b>{row["base_gpa"]:.2f} · {row.get("personal_adjust", 0):+.2f} · {ai}</b></div>'
-            f'<div class="cs-badges">{"".join(badges)}</div></div>'
+            f'<div class="kv"><span>투입 시간</span><b>{fmt(row["scenario_hours"])}시간</b></div>'
+            f'<div class="kv"><span>남는 시간</span><b>{fmt(row["free_left"])}시간</b></div>'
+            + (f'<div class="cs-badges">{"".join(badges)}</div>' if badges else "") + "</div>"
         )
     html(f'<div class="cs-cards">{"".join(cards)}</div>')
 
@@ -348,7 +343,7 @@ def time_chart(table: dict) -> None:
         )
     html(
         '<div class="cs-chart"><h4>⏱️ 시간 예산</h4>'
-        '<div class="cap">막대 = 주간 투입 시간 · 세로선 = 주간 자유 시간. 선을 넘은 빗금 부분이 부족한 시간입니다.</div>'
+        '<div class="cap">막대 = 투입 시간 · 세로선 = 내 자유 시간</div>'
         + "".join(lines) + "</div>"
     )
 
@@ -397,7 +392,7 @@ def gpa_chart(table: dict, current_gpa: float) -> None:
         )
     html(
         '<div class="cs-chart"><h4>🎯 예상 학점</h4>'
-        '<div class="cap">● 예상 학점 · ○ 계산식(보정 전) · 옅은 띠 = 예상 범위 · 점선 = 현재 학점</div>'
+        '<div class="cap">● 예상 학점 · ○ 보정 전 · 띠 = 예상 범위 · 점선 = 현재 학점</div>'
         + "".join(lines) + _ticks(lo, hi)
         + f'<div class="cs-note">┆ 현재 학점 {fmt(current_gpa)}</div></div>'
     )
@@ -488,7 +483,7 @@ def trend_chart(rows: list) -> None:
     note = "" if len(points) > 1 else '<div class="cs-note" style="margin-left:0">학기 기록이 2개 이상 쌓이면 선으로 이어져 추이가 보입니다.</div>'
     html(
         '<div class="cs-chart"><h4>📈 학기별 추이</h4>'
-        '<div class="cap">학기마다 계산식 예상 학점과 실제 학점을 비교합니다. 한 학기에 기록이 여러 줄이면 평균입니다.</div>'
+        '<div class="cap">학기별 예상 학점과 실제 학점</div>'
         '<div class="cs-legend" style="margin-top:-14px"><span><span class="cs-dot" style="background:#3b5bdb"></span>실제 학점</span>'
         '<span><span class="cs-dot" style="background:#fff;border:2px solid #94a3b8"></span>계산식 예상 학점(점선)</span></div>'
         + svg + note + "</div>"

@@ -428,7 +428,7 @@ def t_scholar(ctx):
         ok = [name_of(r) for r in ctx.rows if r["expected_gpa"] >= ctx.target]
         text += (f"\n\n🎯 지금 목표 {ctx.target:.2f} 기준으로 " + (f"달성 예상 선택지는 **{', '.join(ok)}**예요." if ok else "달성 예상 선택지가 없어요. 활동 시간을 줄여 보세요."))
     elif ctx.rows:
-        text += "\n\n📊 결과·보고서의 **🎯 목표 학점**에 장학 기준 학점을 넣으면 선택지마다 활동을 몇 시간까지 해도 되는지 알려 드려요."
+        text += "\n\n📊 결과의 **🎯 목표** 탭에 장학 기준 학점을 넣으면 선택지마다 활동을 몇 시간까지 해도 되는지 알려 드려요."
     else:
         text += "\n\n선택지를 비교한 뒤 목표 학점에 기준을 넣어 보세요."
     return text
@@ -593,7 +593,7 @@ def offline_reply(question: str, profile: dict = None, table: dict = None, perso
 
     if rows and "목표" in q:
         if target is None:
-            return "📊 결과·보고서의 **🎯 목표 학점**에 지키고 싶은 학점을 먼저 넣어 주세요."
+            return "📊 결과의 **🎯 목표** 탭에 지키고 싶은 학점을 먼저 넣어 주세요."
         lines = []
         for r in rows:
             plan = simulation.target_plan(profile, r, target, r.get("personal_adjust", 0))
