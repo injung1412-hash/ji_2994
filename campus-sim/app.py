@@ -261,7 +261,7 @@ if menu == "🏠 홈":
 
     st.subheader("이렇게 써요")
     ui.flow()
-    st.caption("결정은 시스템이 아니라 내가 합니다. 예상 학점은 추정치입니다.")
+    st.caption("결정은 AI가 아니라 사용자가 합니다. 예상 학점은 추정치입니다.")
 
 
 elif menu == "👤 프로필":
