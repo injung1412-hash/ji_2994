@@ -191,7 +191,7 @@ class CorrectionRangeTest(unittest.TestCase):
     def test_report_and_table_show_range(self):
         table = compare.compare(simulation.run(PROFILE, plans(15), ask=no_ai)["rows"], 25)
         self.assertEqual(compare.table_rows(table)[0]["예상 범위"], "3.40 ~ 4.00")
-        self.assertIn("범위 3.40~4.00", report.make_report(table))
+        self.assertIn("| 3.40~4.00 |", report.make_report(table))
 
 
 class ActivityTypeTest(unittest.TestCase):

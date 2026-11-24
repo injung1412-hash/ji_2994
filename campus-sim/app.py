@@ -33,7 +33,7 @@ from modules import ui
 
 
 APP_TITLE = "AI 대학생활 시뮬레이션 시스템"
-MENUS = ["🏠 홈", "👤 프로필", "🔀 선택지", "📊 결과·보고서", "💬 AI 상담", "⏱️ 학기 중 점검", "📝 학기 말 기록", "🗂️ 기록 관리"]
+MENUS = ["🏠 홈", "👤 프로필", "🔀 선택지", "📊 결과", "📄 보고서", "💬 AI 상담", "⏱️ 학기 중 점검", "📝 학기 말 기록", "🗂️ 기록 관리"]
 
 st.set_page_config(page_title=APP_TITLE, page_icon="🎓", layout="wide")
 ui.inject_css()
@@ -215,9 +215,6 @@ with st.sidebar:
     menu = st.radio("메뉴", MENUS, key="menu", label_visibility="collapsed")
     st.divider()
     ui.sidebar_progress(done)
-    st.divider()
-    st.caption("profile → scenario → simulation → compare → report → feedback")
-    st.caption("기록 파일: data/simulation_log.csv")
 
 if st.session_state.pop("scroll_to_top", False):
     # 채팅 화면(💬 AI 상담)에서는 본문 영역 이름이 stMain 대신 stAppScrollToBottomContainer입니다
@@ -240,13 +237,12 @@ if "flash_message" in st.session_state:
 
 if menu == "🏠 홈":
     ui.hero(
-        "학기 초 선택을 숫자로 비교하는 도구",
+        "학기 선택 비교 도우미",
         "이번 학기,<br>어디에 시간을 쓸까?",
-        "인턴 병행 · 학점 집중 · 동아리 확대 중 어디에 시간을 쓸지 고민될 때, "
-        "선택지마다 <b>남는 자유 시간</b>과 <b>예상 학점</b>을 같은 기준으로 비교해 보여 줍니다.",
+        "선택지마다 <b>남는 시간</b>과 <b>예상 학점</b>을 한눈에 비교합니다.",
     )
     if st.session_state.table is not None:
-        target = ("▶ 결과 보기", "📊 결과·보고서")
+        target = ("▶ 결과 보기", "📊 결과")
     elif st.session_state.profile:
         target = ("▶ 이어서 선택지 입력", "🔀 선택지")
     else:
@@ -263,15 +259,13 @@ if menu == "🏠 홈":
     )
 
 
-    st.subheader("사용 흐름")
+    st.subheader("이렇게 써요")
     ui.flow()
-    ui.callout("🔁", "학기 말에 기록한 결과는 다음 학기 예측에 반영됩니다.")
-    st.caption("결정은 시스템이 아니라 내가 합니다. " + report_mod.NOTICE)
+    st.caption("결정은 시스템이 아니라 내가 합니다. 예상 학점은 추정치입니다.")
 
 
 elif menu == "👤 프로필":
-    ui.page_header("👤", "STEP 1", "이번 학기 내 상황", "학번 · 실명 · 가구 소득은 받지 않습니다.")
-    ui.stepper(0, done)
+    ui.page_header("👤", "내 상황", "4가지만 입력하면 됩니다")
     p = st.session_state.profile or {}
     with st.form("profile_form"):
         term = st.text_input("학기", p.get("term", ""), placeholder="예: 2026-2")
@@ -279,10 +273,11 @@ elif menu == "👤 프로필":
         gpa = c1.number_input("현재 학점 (0.0~4.5)", 0.0, 4.5, p.get("current_gpa"), step=0.1, placeholder="예: 3.8")
         credits = c2.number_input("이번 학기 수강 학점", 1, 30, p.get("course_credits"), placeholder="예: 18")
         free = c3.number_input(
-            "주간 자유 시간 (수업 외, 시간)", 1.0, 168.0, p.get("weekly_free_hours"), step=1.0, placeholder="예: 25"
+            "주간 자유 시간 (수업 외, 시간)", 1.0, 168.0, p.get("weekly_free_hours"), step=1.0, placeholder="예: 25",
+            help="수업 · 잠 · 식사 · 이동을 빼고 일주일에 내가 쓸 수 있는 시간",
         )
         submitted = st.form_submit_button("저장하고 선택지 입력으로 ▶", type="primary")
-    ui.callout("💡", "주간 자유 시간은 수업 시간을 뺀, 일주일에 내가 쓸 수 있는 시간입니다. 잠 · 식사 · 이동 시간은 빼고 적어 주세요.")
+    st.caption("🔒 학번 · 이름 · 소득은 받지 않습니다.")
     if submitted:
         try:
             st.session_state.profile = profile_mod.build_profile(term, gpa, credits, free)
@@ -294,8 +289,7 @@ elif menu == "👤 프로필":
 
 
 elif menu == "🔀 선택지":
-    ui.page_header("🔀", "STEP 2", "비교할 선택지", "선택지마다 활동과 주간 투입 시간, 세부 조건을 적습니다. 한 선택지에 활동을 여러 개 넣을 수 있습니다.")
-    ui.stepper(1, done)
+    ui.page_header("🔀", "비교할 선택지", "활동과 주간 시간을 넣으세요")
     profile = st.session_state.profile
     if not profile:
         st.warning("먼저 프로필을 입력하세요.")
@@ -384,16 +378,13 @@ elif menu == "🔀 선택지":
         )
     sync_draft()   # 다른 화면에 다녀와도 입력한 내용이 남도록
     submitted = st.button("저장하고 시뮬레이션 실행 ▶", type="primary")
-    ui.callout(
-        "📚",
-        "활동은 <b>목록에서 고르거나 ✏️ 직접 입력</b>할 수 있습니다. "
-        "<b>📚 공부</b>에 체크한 활동은 <b>공부 시간</b>으로 보고 시간을 늘릴수록 예상 학점이 오르게 계산합니다. "
-        "활동 이름에 <b>" + " · ".join(simulation_mod.STUDY_KEYWORDS) + "</b> 중 하나가 들어가면 자동으로 체크되고, "
-        "“토익”처럼 빠졌거나 “시험 감독 알바”처럼 잘못 체크되면 직접 바꾸면 됩니다. "
-        "그 밖의 활동(인턴 · 동아리 등)은 투입 시간만큼 공부할 시간이 줄어 예상 학점이 내려갑니다. "
-        "예: <b>인턴 병행 15시간 + 공부 5시간</b>처럼 한 선택지에 활동을 섞을 수 있습니다.",
-    )
-    ui.callout("🤖", "세부 조건 글은 AI가 읽고 예상 학점을 ±0.3 안에서 보정하는 데 씁니다. 구체적으로 적을수록 보정 이유가 분명해집니다.")
+    with st.expander("ℹ️ 자세히: 📚 공부 체크 · 세부 조건"):
+        st.markdown(
+            "- **📚 공부**에 체크한 시간은 늘릴수록 예상 학점이 **오릅니다**. 그 밖의 활동은 공부할 시간이 줄어 **내려갑니다**.\n"
+            f"- 이름에 **{' · '.join(simulation_mod.STUDY_KEYWORDS)}**가 들어가면 자동 체크됩니다. 틀리면 직접 바꾸세요.\n"
+            "- **➕ 활동 추가**로 '인턴 15시간 + 공부 5시간'처럼 섞을 수 있습니다.\n"
+            "- **세부 조건**(예: 주 3일 근무)은 AI가 읽고 예상 학점을 ±0.3 안에서 보정합니다."
+        )
     if submitted:
         try:
             scenarios = scenario_mod.build_scenarios(items)
@@ -403,90 +394,110 @@ elif menu == "🔀 선택지":
         else:
             st.session_state.scenarios = scenarios
             run_simulation()
-            go_to("📊 결과·보고서", "선택지를 simulation_log.csv에 기록하고 시뮬레이션을 실행했습니다.")
+            go_to("📊 결과", "저장하고 계산했습니다.")
 
 
-elif menu == "📊 결과·보고서":
-    ui.page_header("📊", "STEP 3", "선택지 비교와 보고서", "모든 선택지를 남는 자유 시간 · 예상 학점이라는 같은 기준으로 비교합니다.")
-    ui.stepper(2, done)
+elif menu == "📊 결과":
+    ui.page_header("📊", "선택지 비교", "같은 기준으로 나란히 봅니다")
     table = st.session_state.table
     if table is None:
-        st.warning("아직 시뮬레이션 결과가 없습니다. 선택지를 먼저 입력하세요.")
+        st.info("아직 결과가 없습니다. 선택지를 먼저 입력하세요.")
         if st.button("🔀 선택지 입력하러 가기", type="primary"):
             go_to("🔀 선택지")
         st.stop()
 
-    status = st.session_state.ai_status
-    if status.startswith(simulation_mod.NO_AI):
-        st.warning(status, icon="⚠️")
-    else:
-        st.info(status, icon="🤖")
     for warning in table["warnings"]:
         st.error(warning)
-
     ui.option_cards(table)
-    personal = st.session_state.get("personal") or {"value": 0, "count": 0, "text": ""}
-    span = st.session_state.get("range_info") or {"width": simulation_mod.RANGE_DEFAULT, "text": ""}
-    ui.callout(
-        "📏",
-        f"<b>내 기록 보정 {personal['value']:+.2f}</b> — {personal['text']}<br>"
-        f"<b>예상 범위 ±{span['width']:g}</b> — {span['text']}",
-    )
 
-    st.subheader("🎯 목표 학점으로 거꾸로 계산")
-    c1, c2 = st.columns([1, 3], vertical_alignment="center")
-    target = target_input(c1, "target_result")
-    c2.caption(
-        "목표 학점을 지키려면 선택지마다 **공부 외 활동(인턴 · 동아리 등)은 최대 몇 시간**, **공부는 최소 몇 시간**인지 "
-        "거꾸로 계산합니다. 시간에 따라 다시 계산할 수 없는 AI 보정은 빼고 계산식 + 내 기록 보정으로 계산합니다(0.5시간 단위)."
-    )
-    ui.target_cards(
-        [
-            (ui.label(row), index, simulation_mod.target_plan(st.session_state.profile, row, target, row.get("personal_adjust", 0)))
-            for index, row in enumerate(table["rows"])
-        ]
-    )
-
-    tab_chart, tab_table, tab_reason = st.tabs(["📈 차트로 보기", "📋 비교표", "🧮 계산 근거와 보정 이유"])
+    tab_names = ["📈 차트", "🎯 목표", "📋 비교표", "🧮 계산 근거"]
+    try:   # 목표 학점을 바꿔 화면이 다시 그려져도 보던 탭을 그대로 둡니다(Streamlit 1.67+)
+        tab_chart, tab_target, tab_table, tab_reason = st.tabs(tab_names, key="result_tab", on_change="rerun")
+    except TypeError:
+        tab_chart, tab_target, tab_table, tab_reason = st.tabs(tab_names)
     with tab_chart:
         c1, c2 = st.columns(2)
         with c1:
             ui.time_chart(table)
         with c2:
             ui.gpa_chart(table, st.session_state.profile["current_gpa"])
+    with tab_target:
+        c1, c2 = st.columns([1, 3], vertical_alignment="center")
+        target = target_input(c1, "target_result")
+        c2.caption("목표를 지키려면 활동은 최대 몇 시간, 공부는 최소 몇 시간인지 알려 줍니다.")
+        ui.target_cards(
+            [
+                (ui.label(row), index, simulation_mod.target_plan(st.session_state.profile, row, target, row.get("personal_adjust", 0)))
+                for index, row in enumerate(table["rows"])
+            ]
+        )
     with tab_table:
         st.dataframe(compare_mod.table_rows(table), hide_index=True, use_container_width=True)
     with tab_reason:
+        personal = st.session_state.get("personal") or {"value": 0, "count": 0, "text": ""}
+        span = st.session_state.get("range_info") or {"width": simulation_mod.RANGE_DEFAULT, "text": ""}
+        st.markdown(
+            f"- **AI 보정**: {st.session_state.ai_status}\n"
+            f"- **내 기록 보정 {personal['value']:+.2f}**: {personal['text']}\n"
+            f"- **예상 범위 ±{span['width']:g}**: {span['text']}"
+        )
         for row in table["rows"]:
-            with st.expander(row["scenario_option"], expanded=True):
+            with st.expander(ui.label(row)):
                 st.write(f"**남는 자유 시간**: {table['weekly_free_hours']:g} − {row['scenario_hours']:g} = {row['free_left']:g}시간")
                 st.write(f"**보정 전 예상 학점**: {row['evidence']}")
                 st.write(f"**보정 이유**: {row['reason']}")
                 if row["scenario_condition"]:
                     st.caption(f"세부 조건: {row['scenario_condition']}")
         st.caption(
-            f"계산식의 기준값({simulation_mod.SPARE_RATIO}, {simulation_mod.HOUR_WEIGHT}, "
-            f"{simulation_mod.BASE_CREDITS}, {simulation_mod.CREDIT_WEIGHT}, 공부 {simulation_mod.STUDY_WEIGHT})과 "
-            f"AI 보정 폭 ±{simulation_mod.AI_LIMIT}은 "
-            "실제 기록으로 검증하지 않은 가정입니다."
+            f"기준값({simulation_mod.SPARE_RATIO}, {simulation_mod.HOUR_WEIGHT}, {simulation_mod.BASE_CREDITS}, "
+            f"{simulation_mod.CREDIT_WEIGHT}, 공부 {simulation_mod.STUDY_WEIGHT})과 AI 보정 폭 ±{simulation_mod.AI_LIMIT}은 검증 전 가정입니다."
         )
 
-    st.subheader("📝 보고서")
-    with st.container(border=True):
-        st.markdown(report_mod.make_report(table))
-
-    c1, c2, c3 = st.columns(3)
-    if c1.button("🔄 AI 보정 다시 받기", use_container_width=True):
-        run_simulation()
-        go_to("📊 결과·보고서", "시뮬레이션을 다시 실행했습니다.")
+    c1, c2 = st.columns(2)
+    if c1.button("📄 보고서 보기", type="primary", use_container_width=True):
+        go_to("📄 보고서")
     if c2.button("💬 이 결과로 상담하기", use_container_width=True):
         go_to("💬 AI 상담")
-    if c3.button("📝 학기 말에 실제 결과 기록하기", type="primary", use_container_width=True):
+
+
+elif menu == "📄 보고서":
+    ui.page_header("📄", "보고서", "비교 결과를 한 장으로 정리했습니다")
+    table = st.session_state.table
+    if table is None:
+        st.info("아직 보고서가 없습니다. 선택지를 먼저 입력하세요.")
+        if st.button("🔀 선택지 입력하러 가기", type="primary"):
+            go_to("🔀 선택지")
+        st.stop()
+
+    rows = table["rows"]
+    best = max(rows, key=lambda r: r["expected_gpa"])
+    roomy = max(rows, key=lambda r: r["free_left"])
+    ui.stats(
+        [
+            ("🏆", "예상 학점 최고", f"{ui.label(best)} {best['expected_gpa']:.2f}"),
+            ("🕒", "여유 시간 최고", f"{ui.label(roomy)} {roomy['free_left']:g}시간"),
+            ("⚠️" if table["warnings"] else "✅", "시간 부족", f"{len(table['warnings'])}개"),
+        ]
+    )
+    report_text = report_mod.make_report(table)
+    with st.container(border=True):
+        st.markdown(report_text)
+
+    c1, c2, c3 = st.columns(3)
+    profile = st.session_state.profile
+    c1.download_button(
+        "⬇️ 보고서 내려받기", f"# 학기 선택지 비교 보고서 ({profile['term']})\n\n{report_text}\n",
+        file_name=f"report_{profile['term']}.md", mime="text/markdown", use_container_width=True,
+    )
+    if c2.button("🔄 다시 계산하기", use_container_width=True):
+        run_simulation()
+        go_to("📄 보고서", "다시 계산했습니다.")
+    if c3.button("📝 학기 말 기록하기", type="primary", use_container_width=True):
         go_to("📝 학기 말 기록")
 
 
 elif menu == "💬 AI 상담":
-    ui.page_header("💬", "상담", "AI 상담", "고민을 편하게 적어 보세요. 입력한 결과나 학기 말 기록이 있으면 그걸 바탕으로 답합니다.")
+    ui.page_header("💬", "AI 상담", "고민을 편하게 적어 보세요")
     ready, why = counsel_mod.ai_ready()
     has_table = bool(st.session_state.profile and st.session_state.table)
     known = [
@@ -552,10 +563,7 @@ elif menu == "💬 AI 상담":
 
 
 elif menu == "⏱️ 학기 중 점검":
-    ui.page_header(
-        "⏱️", "학기 중", "학기 중 점검",
-        "계획대로 되고 있는지, 지금 실제로 쓰는 시간을 넣어 예상 학점을 다시 계산합니다. 점검 결과는 저장하지 않습니다.",
-    )
+    ui.page_header("⏱️", "학기 중 점검", "지금 쓰는 시간으로 다시 계산합니다")
     try:
         pending = feedback_mod.open_rows()
     except ValueError as error:
@@ -639,17 +647,13 @@ elif menu == "⏱️ 학기 중 점검":
     st.subheader("🎯 목표 학점 점검")
     c1, c2 = st.columns([1, 3], vertical_alignment="center")
     target = target_input(c1, "target_midterm")
-    c2.caption("지금 상황 기준으로 목표 학점을 지키려면 시간을 어떻게 조정해야 하는지 계산합니다.")
+    c2.caption("지금 상황에서 목표를 지키려면 시간을 어떻게 바꿔야 하는지 알려 줍니다.")
     ui.target_cards([("지금 상황", 0, simulation_mod.target_plan(now_profile, now_row, target, correction))])
-    st.caption(
-        "점검 결과는 저장하지 않습니다(CSV 10개 항목 유지). 계산식 + 내 기록 보정으로 계산하며 AI 보정은 빠집니다. "
-        "학기 말에는 📝 학기 말 기록에서 실제 결과를 기록하세요."
-    )
+    st.caption("점검 결과는 저장하지 않습니다. (AI 보정 제외)")
 
 
 elif menu == "📝 학기 말 기록":
-    ui.page_header("📝", "STEP 4", "학기 말 실제 결과 기록", "실제로 고른 선택지의 결과를 기록합니다. 다음 학기 예측에 반영됩니다.")
-    ui.stepper(3, done)
+    ui.page_header("📝", "학기 말 기록", "실제 결과를 남기면 다음 예측에 반영됩니다")
     try:
         pending = feedback_mod.open_rows()
     except ValueError as error:
@@ -726,10 +730,7 @@ elif menu == "📝 학기 말 기록":
 
 
 elif menu == "🗂️ 기록 관리":
-    ui.page_header(
-        "🗂️", "기록 관리", "저장된 기록 확인 · 지우기 · 불러오기",
-        "잘못 입력한 기록은 골라서 지우고, 다른 기기에서 내려받은 CSV로 기록을 옮기거나 되살립니다.",
-    )
+    ui.page_header("🗂️", "기록 관리", "확인 · 지우기 · 백업")
     try:
         log = scenario_mod.read_log()
     except ValueError as error:
@@ -749,10 +750,7 @@ elif menu == "🗂️ 기록 관리":
     )
 
     with st.expander("📥 내려받아 둔 CSV로 기록 불러오기 (백업 복원)", expanded=not log):
-        st.caption(
-            "이 시스템에서 내려받은 simulation_log.csv를 올리면 기록을 옮기거나 되살립니다. "
-            "웹 버전 기록은 이 브라우저에만 저장되니, 기기를 바꿀 때 이 기능을 쓰세요."
-        )
+        st.caption("내려받아 둔 simulation_log.csv를 올리면 기록을 옮기거나 되살립니다.")
         upload = st.file_uploader("CSV 파일 올리기", type=["csv"], key=f"backup_{st.session_state.get('delete_round', 0)}")
         if upload is not None:
             try:
@@ -825,9 +823,5 @@ elif menu == "🗂️ 기록 관리":
         c3.download_button(
             "⬇️ CSV 내려받기", f.read(), file_name="simulation_log.csv", mime="text/csv", use_container_width=True
         )
-    ui.callout(
-        "💡",
-        "실제 결과까지 기록한 줄을 지우면 예측 오차 기록과 다음 학기 AI 보정에 쓰이는 지난 학기 기록에서도 빠집니다. "
-        "지운 기록은 되돌릴 수 없으니 필요하면 먼저 CSV로 내려받아 두세요.",
-    )
+    st.caption("⚠️ 지운 기록은 되돌릴 수 없습니다. 필요하면 먼저 CSV로 내려받아 두세요.")
 
