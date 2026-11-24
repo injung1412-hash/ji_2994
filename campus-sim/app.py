@@ -290,7 +290,7 @@ elif menu == "👤 프로필":
 
 
 elif menu == "🔀 선택지":
-    ui.page_header("🔀", "비교할 선택지", "활동과 주간 시간을 넣으세요")
+    ui.page_header("🔀", "비교할 선택지", "활동을 고르고 주 몇 시간인지 넣으세요")
     profile = st.session_state.profile
     if not profile:
         st.warning("먼저 프로필을 입력하세요.")
@@ -307,7 +307,10 @@ elif menu == "🔀 선택지":
         ]
     )
     draft = load_draft()
-    count = st.radio("선택지 수", [1, 2, 3], index=min(len(st.session_state.scenarios) or 3, 3) - 1, horizontal=True)
+    count = st.radio(
+        "비교할 선택지 수", [1, 2, 3], index=min(len(st.session_state.scenarios) or 3, 3) - 1,
+        horizontal=True, format_func=lambda n: f"{n}개",
+    )
     ensure_draft(count)
 
     items = []
@@ -326,7 +329,6 @@ elif menu == "🔀 선택지":
                 choice = c1.selectbox(
                     "활동 고르기", options, key=f"pk_{act['id']}", format_func=preset_label,
                     on_change=pick_activity, args=(i, act["id"]), label_visibility=visibility,
-                    help="목록에서 고르거나, 맨 아래 '✏️ 직접 입력'을 고르면 이름을 직접 적을 수 있습니다.",
                 )
                 if choice == CUSTOM:
                     c1.text_input(
@@ -346,12 +348,12 @@ elif menu == "🔀 선택지":
                     st.session_state[f"as_{act['id']}"] = act["study"]
                 c4.checkbox(
                     "📚 공부", key=f"as_{act['id']}", on_change=set_study, args=(i, act["id"]),
-                    help="공부 시간이면 체크합니다. 처음에는 이름에 공부 관련 단어가 있으면 자동으로 체크됩니다.",
                 )
-                c3.button(
-                    "🗑️", key=f"del_{act['id']}", on_click=remove_activity, args=(i, act["id"]),
-                    disabled=len(acts) == 1, help="이 활동 지우기", use_container_width=True,
-                )
+                if len(acts) > 1:   # 활동이 하나뿐이면 지울 수 없으니 버튼을 보이지 않습니다
+                    c3.button(
+                        "🗑️", key=f"del_{act['id']}", on_click=remove_activity, args=(i, act["id"]),
+                        help="이 활동 지우기", use_container_width=True,
+                    )
             names = [
                 st.session_state.get(f"an_{a['id']}") or "" if st.session_state.get(f"pk_{a['id']}") == CUSTOM
                 else st.session_state.get(f"pk_{a['id']}") or a["name"]
@@ -367,10 +369,11 @@ elif menu == "🔀 선택지":
                 disabled=len(acts) >= scenario_mod.MAX_ACTIVITIES, use_container_width=True,
             )
             ui.activity_total(c2, total, study, profile["weekly_free_hours"])
-            st.text_area(
-                "세부 조건 (글)", option["cond"], key=f"cond_{i}", height=80,
-                placeholder="예: 주 3일 근무, 출퇴근 왕복 1시간, 시험 기간에도 근무",
-            )
+            with st.expander("📝 세부 조건 (선택)", expanded=bool(option["cond"])):
+                st.text_area(
+                    "세부 조건 (글)", option["cond"], key=f"cond_{i}", height=80, label_visibility="collapsed",
+                    placeholder="예: 주 3일 근무, 출퇴근 왕복 1시간, 시험 기간에도 근무",
+                )
         items.append(
             {
                 "activities": [{"name": n, "hours": h, "study": k} for n, h, k in zip(names, hours, kinds)],
@@ -378,9 +381,10 @@ elif menu == "🔀 선택지":
             }
         )
     sync_draft()   # 다른 화면에 다녀와도 입력한 내용이 남도록
-    submitted = st.button("저장하고 시뮬레이션 실행 ▶", type="primary")
-    with st.expander("ℹ️ 자세히: 📚 공부 체크 · 세부 조건"):
+    submitted = st.button("📊 저장하고 비교하기", type="primary", use_container_width=True)
+    with st.expander("ℹ️ 도움말"):
         st.markdown(
+            "- 활동은 목록에서 고르거나, 맨 아래 **✏️ 직접 입력**으로 이름을 적습니다.\n"
             "- **📚 공부**에 체크한 시간은 늘릴수록 예상 학점이 **오릅니다**. 그 밖의 활동은 공부할 시간이 줄어 **내려갑니다**.\n"
             f"- 이름에 **{' · '.join(simulation_mod.STUDY_KEYWORDS)}**가 들어가면 자동 체크됩니다. 틀리면 직접 바꾸세요.\n"
             "- **➕ 활동 추가**로 '인턴 15시간 + 공부 5시간'처럼 섞을 수 있습니다.\n"
