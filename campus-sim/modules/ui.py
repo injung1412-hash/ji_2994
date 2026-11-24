@@ -197,10 +197,10 @@ def fmt(value) -> str:
     return f"{round(float(value), 2):g}"
 
 
-def sidebar_brand(title: str) -> None:
+def sidebar_brand(title: str, subtitle: str = "") -> None:
     html(
         f'<div class="cs-brand"><div class="cs-logo">🎓</div>'
-        f"<div><b>{escape(title)}</b><span>학기 선택 비교 도우미</span></div></div>"
+        f"<div><b>{escape(title)}</b><span>{escape(subtitle)}</span></div></div>"
         '<div class="cs-side-label">MENU</div>'
     )
 
