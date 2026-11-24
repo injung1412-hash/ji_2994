@@ -507,6 +507,25 @@ class CounselTest(unittest.TestCase):
         self.assertIn("동아리 확대", answers[14])
         self.assertIn("행사", ask("동아리 계속할까?", records=[{**RECORD, "scenario_option": "동아리 확대", "user_review": "행사 때 바빴다"}]))
 
+    def test_offline_routes_to_the_right_topic(self):
+        ask = lambda q: counsel.offline_reply(q, PROFILE, self.table, records=[RECORD])   # noqa: E731
+        self.assertIn("잠과 체력", ask("잠이 부족해"))                 # '부족'이 있어도 시간 부족 목록이 아님
+        self.assertIn("시험은", ask("시험 범위 정리 어떻게 해?"))         # '정리'가 있어도 기록 요약이 아님
+        self.assertIn("알바는", ask("알바 바꾸고 싶어"))
+        self.assertIn("동아리", ask("지난주부터 동아리가 힘들어").split("\n")[0])
+        self.assertIn("인턴은", ask("인턴 제일 적당한 시간은?"))          # '제일'이 있어도 순위가 아님
+        self.assertIn("토익", ask("감사해요 그런데 토익은?"))
+        self.assertIn("학기 말 기록 1건", ask("지난 학기 기록은 어떻게 반영됐어?"))
+        self.assertIn("예상 학점만 보면", ask("어떤 선택지가 학점에 유리해?"))
+        self.assertIn("주 5시간 부족", ask("시간이 부족한 선택지가 있어?"))
+
+    def test_offline_daily_hours_become_weekly(self):
+        text = counsel.offline_reply("공부를 하루에 3시간 하면?", PROFILE, self.table)
+        self.assertIn("공부 하루 3시간(주 21시간)", text)
+        self.assertIn("남는 자유 시간 **4시간**", text)
+        self.assertIn("인턴 15시간", counsel.offline_reply("인턴하면 15시간인데", PROFILE, self.table))
+        self.assertIn("168시간", counsel.offline_reply("하루 30시간 공부", PROFILE, self.table))
+
     def test_offline_follow_up_uses_previous_topic(self):
         history = [{"role": "user", "content": "인턴 해도 될까?"}, {"role": "assistant", "content": "…"},
                    {"role": "user", "content": "더 자세히"}]

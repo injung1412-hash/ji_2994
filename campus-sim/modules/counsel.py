@@ -214,7 +214,8 @@ EXTRA_STUDY = ("토익", "토플", "어학", "자격증", "전공", "독서실")
 FOLLOW_UP = ("왜", "더자세히", "자세히", "구체적", "예를들", "그럼", "그러면", "그래서", "어떻게해", "어떡해", "또", "다른방법")
 WHATIF = re.compile(r"([가-힣A-Za-z]+)\s*(?:주\s*)?(\d+(?:\.\d+)?)\s*시간")
 TIME_WORDS = ("시간", "자유", "주", "하루", "매일", "일주일", "평일", "주말", "한달", "총", "약", "최대", "최소")
-PARTICLE = re.compile(r"(을|를|은|는|이|가|로|으로|도|만|하고|랑|이랑|에)$")
+PARTICLE = re.compile(r"(을|를|은|는|이|가|로|으로|도|만|하고|랑|이랑|에|하면|할때|해서|하는데|씩)$")
+DAILY = ("하루", "매일")
 
 
 AI_NOTE = "\n\n아무 말이나 자유롭게 주고받는 대화는 **AI 상담**(내 컴퓨터에서 `ai_config.ini`에 API 키)에서 할 수 있어요."
@@ -283,17 +284,40 @@ def option_line(ctx, words) -> str:
     )
 
 
+def clean_name(raw: str) -> str:
+    name = raw
+    while len(name) > 2 and PARTICLE.search(name):
+        name = PARTICLE.sub("", name)
+    return name
+
+
+def whatif_pairs(question: str) -> list:
+    """질문 속 '활동 N시간'을 [(활동, 주당 시간), ...]로. '하루 N시간'은 주 7일로 바꾸고 활동은 질문의 다른 단어에서 찾습니다."""
+    pairs = []
+    for raw, hours in WHATIF.findall(question):
+        name, hours = clean_name(raw), float(hours)
+        if name in DAILY:
+            words = [clean_name(w) for w in re.findall(r"[가-힣A-Za-z]+", question)]
+            acts = [w for w in words if w not in TIME_WORDS and w not in DAILY
+                    and (study_like(w) or any(w.startswith(k) for v in ACTIVITY_WORDS.values() for k in v))]
+            pairs.append((acts[0] if acts else "활동", hours * 7, hours))
+        elif name not in TIME_WORDS:
+            pairs.append((name, hours, None))
+    return pairs
+
+
 def whatif_reply(ctx, pairs) -> str:
-    acts = []
-    for raw, hours in pairs:
-        name = PARTICLE.sub("", raw) if len(raw) > 2 else raw
-        acts.append((name, float(hours)))
+    acts = [(name, float(hours)) for name, hours, _ in pairs]
+    daily = {name: day for name, _, day in pairs if day}
     study = sum(h for n, h in acts if study_like(n))
     other = sum(h for n, h in acts if not study_like(n))
-    desc = " + ".join(f"{n} {fmt(h)}시간" + ("(공부)" if study_like(n) and "공부" not in n else "") for n, h in acts)
+    desc = " + ".join(
+        n + ("(공부)" if study_like(n) and "공부" not in n else "")
+        + (f" 하루 {fmt(daily[n])}시간(주 {fmt(h)}시간)" if n in daily else f" {fmt(h)}시간") for n, h in acts
+    )
     total = study + other
     if total > 168:
-        return f"**{desc}**은 합이 주 {fmt(total)}시간이에요. 일주일은 168시간뿐이라 계산할 수 없어요. 주당 시간으로 다시 적어 주세요."
+        return f"**{desc}**은 합이 주 {fmt(total)}시간이에요. 일주일은 168시간(하루 24시간)뿐이라 계산할 수 없어요. 시간을 다시 확인해 주세요."
     if not ctx.profile:
         return (f"**{desc}** 계획을 하루로 나누면 매일 약 {total / 7:.1f}시간, 평일에만 하면 약 {total / 5:.1f}시간이에요.\n\n"
                 "👤 프로필(현재 학점 · 수강 학점 · 자유 시간)을 넣으면 이 계획의 예상 학점과 남는 시간을 바로 계산해 드릴게요.")
@@ -520,9 +544,9 @@ TOPICS = [   # 위에서부터 먼저 맞는 주제로 답합니다
     ("parttime", ("알바", "아르바이트", "과외", "돈", "생활비"), t_parttime, m_parttime),
     ("club", ("동아리", "학생회", "대외활동", "공모전", "봉사"), t_club, m_club),
     ("exam", ("시험", "중간고사", "기말", "벼락", "공부"), t_exam, m_exam),
-    ("health", ("운동", "잠", "수면", "건강", "체력", "피곤"), t_health, None),
+    ("health", ("운동", "잠을", "잠이", "잠못", "잠자", "수면", "건강", "체력", "피곤"), t_health, None),
     ("procrast", ("미루", "미뤄", "미룸", "집중이", "집중을", "의지", "게을", "폰", "유튜브"), t_procrast, None),
-    ("credits", ("수강", "몇학점", "학점을많이", "학점을줄", "학점많", "전공"), t_credits, None),
+    ("credits", ("수강", "몇학점", "학점을많이", "학점을줄", "학점많"), t_credits, None),
     ("decide", ("고민", "결정", "모르겠", "골라", "뭘해야", "뭐하지", "추천", "선택해"), t_decide, None),
     ("plan", ("계획", "시간관리", "시간표", "일정", "시간을어떻게", "시간배분"), t_plan, None),
 ]
@@ -544,7 +568,7 @@ def offline_reply(question: str, profile: dict = None, table: dict = None, perso
 
     if any(word in q for word in CARE_WORDS):
         return CARE
-    pairs = [(n, h) for n, h in WHATIF.findall(question) if n not in TIME_WORDS]
+    pairs = whatif_pairs(question)
     if pairs and not any(w in q for w in ("자유시간이", "잠을")):
         return whatif_reply(ctx, pairs)
     if any(w in q for w in ("안녕", "반가", "하이")) and len(q) <= 10:
@@ -552,10 +576,10 @@ def offline_reply(question: str, profile: dict = None, table: dict = None, perso
         if rows:
             return hello + f" 지금 선택지 {len(rows)}개를 비교해 두셨네요. 어떤 점이 가장 고민돼요?"
         return hello + (f" 학기 말 기록 {len(ctx.records)}건도 참고할게요." if ctx.records else "") + " 요즘 어떤 고민이 있어요?"
-    if any(w in q for w in ("고마", "감사", "땡큐")):
+    if any(w in q for w in ("고마", "감사", "땡큐")) and len(q) <= 12 and not topic_of(q):
         return "도움이 됐다니 다행이에요. 결정은 언제든 바꿀 수 있으니, 학기 중간에 ⏱️ 학기 중 점검으로 한 번 더 확인해 보세요."
 
-    about_records = any(w in q for w in ("지난", "기록", "반영", "예측", "맞았", "정리", "다음학기", "바꾸"))
+    about_records = any(w in q for w in ("지난학기", "지난번", "지난기록", "기록", "반영", "예측", "맞았", "다음학기"))
     if about_records:
         if ctx.records:
             if "다음" in q or "바꾸" in q:
@@ -584,17 +608,19 @@ def offline_reply(question: str, profile: dict = None, table: dict = None, perso
                 text += " · 추가 공부 없이도 가능"
             lines.append(text)
         return f"목표 학점 {target:.2f} 기준이에요(계산식 + 내 기록 보정, AI 보정 제외).\n\n" + "\n".join(lines)
-    if rows and ("부족" in q or "모자" in q or "빠듯" in q):
+    found = topic_of(q)
+    if rows and any(w in q for w in ("부족", "모자", "빠듯")) and ("선택지" in q or ("시간" in q and not found)):
         short = [r for r in rows if r["short"]]
         if not short:
             most = max(rows, key=lambda r: r["free_left"])
             least = min(rows, key=lambda r: r["free_left"])
-            return (f"모든 선택지가 주간 자유 시간 안에 들어가요. 여유가 가장 큰 건 **{name_of(most)}**로 {fmt(most['free_left'])}시간이 남고, "
-                    f"가장 빠듯한 건 **{name_of(least)}**로 {fmt(least['free_left'])}시간이 남아요.")
+            return (f"모든 선택지가 주간 자유 시간 안에 들어가요.\n\n- 여유가 가장 큰 선택지: **{name_of(most)}** (주 {fmt(most['free_left'])}시간 남음)\n"
+                    f"- 가장 빠듯한 선택지: **{name_of(least)}** (주 {fmt(least['free_left'])}시간 남음)")
         return "시간이 모자라는 선택지가 있어요.\n\n" + "\n".join(
             f"- **{name_of(r)}**: 주 {fmt(-r['free_left'])}시간 부족 → 활동을 {fmt(-r['free_left'])}시간 줄이면 딱 맞아요" for r in short
         ) + "\n\n세부 조건(근무 요일 등)을 조정할 수 있는지도 살펴보세요."
-    if rows and ("유리" in q or "제일" in q or "가장" in q or "어떤선택지" in q or "뭐가좋" in q or "높" in q):
+    if rows and (any(w in q for w in ("유리", "어떤선택지", "선택지중", "뭐가좋")) or
+                 (not found and "학점" in q and any(w in q for w in ("제일", "가장", "높")))):
         ranked = sorted(rows, key=lambda r: -r["expected_gpa"])
         lines = [f"{i}. **{name_of(r)}** — 예상 학점 {r['expected_gpa']:.2f}"
                  + (f" (범위 {r['range'][0]:.2f}~{r['range'][1]:.2f})" if r.get("range") else "")
@@ -609,7 +635,6 @@ def offline_reply(question: str, profile: dict = None, table: dict = None, perso
             and not any(w in q for w in ("둘다", "같이", "병행")):
         return t_compare(ctx, named[:2])
 
-    found = topic_of(q)
     if found:
         return found[1](ctx)
 
