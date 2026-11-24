@@ -1,4 +1,4 @@
-# AI 대학생활 시뮬레이션 시스템 — 실행: python3 app.py
+# 캠퍼스 랩 — 내 학기를 미리 실험해 보는 곳 (AI 대학생활 시뮬레이션 시스템) · 실행: python3 app.py
 # profile → scenario → simulation → compare → report → (학기 말) feedback → 다음 학기 simulation
 import subprocess
 import sys
@@ -32,10 +32,11 @@ from modules import simulation as simulation_mod
 from modules import ui
 
 
-APP_TITLE = "AI 대학생활 시뮬레이션 시스템"
+APP_TITLE = "캠퍼스 랩"
+APP_SUBTITLE = "내 학기를 미리 실험해 보는 곳"
 MENUS = ["🏠 홈", "👤 프로필", "🔀 선택지", "📊 결과", "📄 보고서", "💬 AI 상담", "⏱️ 학기 중 점검", "📝 학기 말 기록", "🗂️ 기록 관리"]
 
-st.set_page_config(page_title=APP_TITLE, page_icon="🎓", layout="wide")
+st.set_page_config(page_title=f"{APP_TITLE} — {APP_SUBTITLE}", page_icon="🎓", layout="wide")
 ui.inject_css()
 
 for key, default in [("profile", None), ("scenarios", []), ("table", None), ("ai_status", "")]:
@@ -211,7 +212,7 @@ done = [
 ]
 
 with st.sidebar:
-    ui.sidebar_brand(APP_TITLE)
+    ui.sidebar_brand(APP_TITLE, APP_SUBTITLE)
     menu = st.radio("메뉴", MENUS, key="menu", label_visibility="collapsed")
     st.divider()
     ui.sidebar_progress(done)
@@ -237,7 +238,7 @@ if "flash_message" in st.session_state:
 
 if menu == "🏠 홈":
     ui.hero(
-        "학기 선택 비교 도우미",
+        f"{APP_TITLE} · {APP_SUBTITLE}",
         "이번 학기,<br>어디에 시간을 쓸까?",
         "선택지마다 <b>남는 시간</b>과 <b>예상 학점</b>을 한눈에 비교합니다.",
     )
