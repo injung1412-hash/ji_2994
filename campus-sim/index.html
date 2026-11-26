@@ -221,7 +221,10 @@
     .cta .title { font-size: clamp(34px, 5.4vw, 56px); }
 
     footer { background: var(--alt); color: var(--muted); font-size: 12px; padding: 20px 0 28px; }
-    footer .wrap { border-top: 1px solid var(--line); padding-top: 16px; display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: space-between; }
+    footer .foot-notes { padding-bottom: 14px; }
+    footer .foot-notes p { margin: 0 0 6px; line-height: 1.6; }
+    footer .foot-notes b { color: var(--fg-2); font-weight: 600; }
+    footer .foot-row { border-top: 1px solid var(--line); padding-top: 14px; display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: space-between; }
   </style>
 </head>
 <body>
@@ -441,8 +444,14 @@ python3 app.py</pre></div>
 
 <footer>
   <div class="wrap">
-    <span>캠퍼스 랩 (AI 대학생활 시뮬레이션 시스템) · 예상 학점은 추정치이며 결과를 보장하지 않습니다. 결정은 AI가 아니라 사용자가 합니다.</span>
-    <a href="app.html">웹 실행</a>
+    <div class="foot-notes">
+      <p>기록은 지금 쓰는 브라우저에만 저장되고 서버로 보내지 않습니다. 백업은 앱의 <b>🗂️ 기록 관리 → ⬇️ CSV 내려받기</b>를 이용하세요.</p>
+      <p>웹 버전은 AI 보정 없이 계산식으로 동작합니다. 예상 학점은 추정치이며 결과를 보장하지 않습니다. 결정은 AI가 아니라 사용자가 합니다.</p>
+    </div>
+    <div class="foot-row">
+      <span>캠퍼스 랩 (AI 대학생활 시뮬레이션 시스템)</span>
+      <a href="app.html">웹 실행</a>
+    </div>
   </div>
 </footer>
 
