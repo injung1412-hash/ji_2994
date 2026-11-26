@@ -27,7 +27,8 @@
     .bar button:hover { text-decoration: underline; }
     .bar :focus-visible { outline: 2px solid #0071e3; outline-offset: 3px; border-radius: 6px; }
     @media (max-width: 640px) { .bar .note { display: none; } .bar button { margin-left: auto; } }
-    #root { height: calc(100% - 49px); }
+    /* 앱의 사이드바 · 머리줄(화면 고정 요소)이 위쪽 막대를 덮지 않도록 이 영역 안에서만 배치되게 합니다 */
+    #root { position: relative; height: calc(100% - 49px); overflow: hidden; transform: translateZ(0); }
   </style>
 </head>
 <body>
