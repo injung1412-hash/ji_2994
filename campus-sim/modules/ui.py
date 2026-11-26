@@ -9,15 +9,17 @@ STEPS = [("👤", "프로필"), ("🔀", "선택지"), ("📊", "결과"), ("�
 CSS = """
 <style>
 :root {
-  --cs-brand: #3b5bdb; --cs-brand-2: #7048e8; --cs-soft: #edf2ff; --cs-card: #ffffff; --cs-line: #e2e8f0;
-  --cs-fg: #0f172a; --cs-fg-2: #334155; --cs-muted: #5a687c; --cs-track: #e9edf5;
-  --cs-warn: #b45309; --cs-warn-soft: #fff7e6; --cs-good: #237a35; --cs-good-soft: #ebfbee;
-  --cs-shadow: 0 1px 2px rgba(15,23,42,.04), 0 8px 24px rgba(15,23,42,.06);
-  --cs-radius: 16px;   /* 카드 · 차트 · 통계 상자 공통 둥글기 */
+  /* 소개 페이지와 같은 색: 흰 바탕 · 검은 글자 · 파란 강조 · 옅은 회색 면 */
+  --cs-brand: #0071e3; --cs-brand-2: #0066cc; --cs-soft: #f5f5f7; --cs-card: #ffffff; --cs-line: #e8e8ed;
+  --cs-fg: #1d1d1f; --cs-fg-2: #424245; --cs-muted: #6e6e73; --cs-track: #e8e8ed;
+  --cs-warn: #b45309; --cs-warn-soft: #fff4e5; --cs-good: #1f7a34; --cs-good-soft: #e9f7ec; --cs-info-soft: #e8f1fc;
+  --cs-shadow: 2px 4px 12px rgba(0,0,0,.06);
+  --cs-radius: 18px;   /* 카드 · 차트 · 통계 상자 공통 둥글기 */
 }
 .block-container { max-width: 1120px; padding-top: 2.2rem; padding-bottom: 4rem; }
+[data-testid="stAppViewContainer"], [data-testid="stMain"] { -webkit-font-smoothing: antialiased; }
 [data-testid="stHeader"] { background: transparent; }
-h1, h2, h3 { letter-spacing: -0.02em; }
+h1, h2, h3 { letter-spacing: -0.025em; }
 
 /* 사이드바 메뉴: 라디오를 메뉴 버튼처럼 */
 [data-testid="stSidebar"] [data-testid="stElementContainer"]:has([role="radiogroup"]),
@@ -27,46 +29,37 @@ h1, h2, h3 { letter-spacing: -0.02em; }
 [data-testid="stSidebar"] [role="radiogroup"] label {
   width: 100% !important; max-width: none !important; box-sizing: border-box; padding: 10px 12px; border-radius: 10px; margin: 0; transition: background .15s;
 }
-[data-testid="stSidebar"] [role="radiogroup"] label:hover { background: rgba(145,167,255,.10); }
-[data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) {
-  background: linear-gradient(90deg, rgba(145,167,255,.30), rgba(165,139,255,.10));
-  box-shadow: inset 3px 0 0 #91a7ff;
-}
-[data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) p { font-weight: 700; color: #fff; }
+[data-testid="stSidebar"] [role="radiogroup"] label:hover { background: rgba(0,0,0,.04); }
+[data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) { background: #ffffff; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+[data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) p { font-weight: 700; color: #1d1d1f; }
 [data-testid="stSidebar"] [role="radiogroup"] label div:has(+ [data-testid="stMarkdownContainer"]) { display: none; }
 [data-testid="stSidebar"] [role="radiogroup"] p { font-size: 15px; }
 
 /* 공통 조각 */
 .cs-brand { display: flex; align-items: center; gap: 10px; margin: 4px 0 18px; }
-.cs-logo { width: 38px; height: 38px; border-radius: 11px; display: grid; place-items: center; font-size: 20px;
-  background: linear-gradient(135deg, #3b5bdb, #7048e8); box-shadow: 0 6px 16px rgba(59,91,219,.45); }
-.cs-brand b { display: block; font-size: 16px; line-height: 1.25; color: #fff; }
-.cs-brand span { font-size: 12px; color: #8e9ab5; }
-.cs-side-label { font-size: 11px; font-weight: 800; letter-spacing: .08em; color: #8e9ab5; margin: 4px 0 6px; }
+.cs-logo { width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; font-size: 18px;
+  background: linear-gradient(135deg, #3b5bdb, #7048e8); }
+.cs-brand b { display: block; font-size: 17px; line-height: 1.25; color: #1d1d1f; letter-spacing: -0.01em; }
+.cs-brand span { font-size: 12px; color: #6e6e73; }
+.cs-side-label { font-size: 11px; font-weight: 700; letter-spacing: .06em; color: #6e6e73; margin: 4px 0 6px; }
 .cs-side-progress { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
-.cs-side-progress div { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #c5cde0; }
+.cs-side-progress div { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #424245; }
 .cs-side-progress i { width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; font-style: normal;
-  font-size: 11px; border: 1.5px solid #4a5583; color: #8e9ab5; }
-.cs-side-progress .done i { background: #91a7ff; border-color: #91a7ff; color: #141b3a; font-weight: 800; }
+  font-size: 11px; border: 1.5px solid #d2d2d7; color: #6e6e73; }
+.cs-side-progress .done i { background: #0071e3; border-color: #0071e3; color: #fff; font-weight: 700; }
 
-.cs-hero { position: relative; overflow: hidden; border-radius: 22px; padding: 40px 40px 36px; color: #fff; margin-bottom: 14px;
-  background: linear-gradient(135deg, #3b5bdb 0%, #5f3dc4 60%, #7048e8 100%); box-shadow: 0 20px 50px rgba(59,91,219,.28); }
-.cs-hero::before { content: ""; position: absolute; width: 340px; height: 340px; right: -90px; top: -120px; border-radius: 50%;
-  background: rgba(255,255,255,.10); }
-.cs-hero::after { content: ""; position: absolute; width: 220px; height: 220px; right: 140px; bottom: -130px; border-radius: 50%;
-  background: rgba(255,255,255,.07); }
-.cs-hero .k { display: inline-block; font-size: 13px; font-weight: 700; background: rgba(255,255,255,.18); padding: 4px 12px;
-  border-radius: 999px; }
-.cs-hero h1 { color: #fff; font-size: clamp(28px, 4.4vw, 42px); line-height: 1.2; margin: 14px 0 10px; padding: 0; }
-.cs-hero p { color: #fff; font-size: 17px; max-width: 620px; margin: 0; }
-.cs-hero .emoji { position: absolute; right: 44px; top: 50%; transform: translateY(-50%); font-size: 88px; opacity: .9; }
-@media (max-width: 760px) { .cs-hero { padding: 28px 22px; } .cs-hero .emoji { display: none; } }
+.cs-hero { text-align: center; padding: 40px 8px 8px; }
+.cs-hero .k { display: block; font-size: 19px; font-weight: 600; color: var(--cs-fg); }
+.cs-hero h1 { color: var(--cs-fg); font-size: clamp(36px, 6vw, 64px); line-height: 1.08; letter-spacing: -0.035em; font-weight: 700;
+  margin: 6px 0 12px; padding: 0; }
+.cs-hero p { color: var(--cs-muted); font-size: clamp(17px, 2vw, 22px); margin: 0 auto; max-width: 640px; }
+.cs-hero .emoji { display: none; }
 
 .cs-page { display: flex; align-items: center; gap: 14px; margin: 0 0 22px; }
-.cs-page .ic { flex: none; width: 54px; height: 54px; border-radius: 16px; display: grid; place-items: center; font-size: 26px;
+.cs-page .ic { flex: none; width: 52px; height: 52px; border-radius: 14px; display: grid; place-items: center; font-size: 25px;
   background: var(--cs-soft); }
 .cs-page .s { font-size: 13px; font-weight: 800; color: var(--cs-brand); letter-spacing: .04em; }
-.cs-page h2 { margin: 0; padding: 0; font-size: 26px; }
+.cs-page h2 { margin: 0; padding: 0; font-size: 30px; letter-spacing: -0.03em; }
 [data-testid="stMarkdownContainer"] table { display: block; overflow-x: auto; }
 [data-testid="stMarkdownContainer"] th, [data-testid="stMarkdownContainer"] td { white-space: nowrap; }
 .cs-page p { margin: 2px 0 0; color: var(--cs-muted); font-size: 15px; }
@@ -113,7 +106,7 @@ h1, h2, h3 { letter-spacing: -0.02em; }
 .cs-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin: 6px 0 20px; }
 .cs-card { position: relative; background: var(--cs-card); border: 1px solid var(--cs-line); border-radius: var(--cs-radius); padding: 20px 20px 16px;
   box-shadow: var(--cs-shadow); overflow: hidden; }
-.cs-card::before { content: ""; position: absolute; left: 0; top: 0; right: 0; height: 5px; background: var(--c); }
+.cs-card::before { content: ""; position: absolute; left: 0; top: 0; right: 0; height: 4px; background: var(--c); }
 .cs-card .t { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-weight: 800; font-size: 17px; color: var(--cs-fg); }
 .cs-card .big { font-size: 40px; font-weight: 800; letter-spacing: -0.03em; color: var(--cs-fg); margin: 10px 0 0; line-height: 1.1; }
 .cs-card .big small { font-size: 13px; font-weight: 600; color: var(--cs-muted); margin-left: 6px; letter-spacing: 0; }
@@ -126,7 +119,7 @@ h1, h2, h3 { letter-spacing: -0.02em; }
 .cs-pill { font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
 .cs-pill.warn { background: var(--cs-warn-soft); color: var(--cs-warn); }
 .cs-pill.ok { background: var(--cs-good-soft); color: var(--cs-good); }
-.cs-pill.info { background: var(--cs-soft); color: var(--cs-brand); }
+.cs-pill.info { background: var(--cs-info-soft); color: #0058b0; }
 
 .cs-chart { background: var(--cs-card); border: 1px solid var(--cs-line); border-radius: var(--cs-radius); padding: 22px 22px 16px; box-shadow: var(--cs-shadow); margin-bottom: 16px; }
 .cs-chart h4 { margin: 0; padding: 0; font-size: 16px; color: var(--cs-fg); }
@@ -409,9 +402,9 @@ def history_chart(rows: list) -> None:
         lines.append(
             f'<div class="cs-row" title="{escape(name)}: 예상 {row["predicted_gpa"]:.2f} → 실제 {float(row["actual_gpa"]):g}">'
             f'<div class="nm">{escape(name)}</div><div class="cs-dots"><div class="ax"></div>'
-            f'<div class="ln" style="left:{min(pred, actual):.2f}%;width:{abs(actual - pred):.2f}%;background:#3b5bdb"></div>'
-            f'<div class="ring" style="left:{pred:.2f}%;border-color:#3b5bdb"></div>'
-            f'<div class="pt" style="left:{actual:.2f}%;background:#3b5bdb"></div>'
+            f'<div class="ln" style="left:{min(pred, actual):.2f}%;width:{abs(actual - pred):.2f}%;background:#0071e3"></div>'
+            f'<div class="ring" style="left:{pred:.2f}%;border-color:#0071e3"></div>'
+            f'<div class="pt" style="left:{actual:.2f}%;background:#0071e3"></div>'
             f'<div class="lb {"left" if actual > 80 else ""}" style="left:{actual:.2f}%">{row["error"]:+.2f}</div></div></div>'
         )
     html(
@@ -472,19 +465,19 @@ def trend_chart(rows: list) -> None:
     )
     last = points[-1]
     tags = (
-        f'<text x="{x(len(points) - 1) + 9:.1f}" y="{y(last["actual"]) + 4:.1f}" font-size="12" font-weight="700" fill="#3b5bdb">{last["actual"]:.2f}</text>'
+        f'<text x="{x(len(points) - 1) + 9:.1f}" y="{y(last["actual"]) + 4:.1f}" font-size="12" font-weight="700" fill="#0071e3">{last["actual"]:.2f}</text>'
         f'<text x="{x(len(points) - 1) + 9:.1f}" y="{y(last["pred"]) + 4:.1f}" font-size="12" fill="#64748b">{last["pred"]:.2f}</text>'
     )
     svg = (
         f'<svg viewBox="0 0 {width} {height}" width="100%" role="img" aria-label="학기별 계산식 예상 학점과 실제 학점 추이">'
-        + grid + series("pred", "#94a3b8", True, False, "계산식 예상") + series("actual", "#3b5bdb", False, True, "실제")
+        + grid + series("pred", "#94a3b8", True, False, "계산식 예상") + series("actual", "#0071e3", False, True, "실제")
         + labels + tags + "</svg>"
     )
     note = "" if len(points) > 1 else '<div class="cs-note" style="margin-left:0">학기 기록이 2개 이상 쌓이면 선으로 이어져 추이가 보입니다.</div>'
     html(
         '<div class="cs-chart"><h4>📈 학기별 추이</h4>'
         '<div class="cap">학기별 예상 학점과 실제 학점</div>'
-        '<div class="cs-legend" style="margin-top:-14px"><span><span class="cs-dot" style="background:#3b5bdb"></span>실제 학점</span>'
+        '<div class="cs-legend" style="margin-top:-14px"><span><span class="cs-dot" style="background:#0071e3"></span>실제 학점</span>'
         '<span><span class="cs-dot" style="background:#fff;border:2px solid #94a3b8"></span>계산식 예상 학점(점선)</span></div>'
         + svg + note + "</div>"
     )
@@ -556,7 +549,7 @@ def compare_plan(plan_row: dict, now_row: dict) -> None:
     html(
         '<div class="cs-cards">'
         + card("📋 학기 초 계획", plan_row, "#94a3b8")
-        + card("⏱️ 지금 상황", now_row, "#3b5bdb")
+        + card("⏱️ 지금 상황", now_row, "#0071e3")
         + f'<div class="cs-card cs-delta"><div class="t"><span>변화</span></div>'
         f'<div class="big"><span class="cs-pill {tone}" style="font-size:22px;padding:6px 14px">{sign} {delta:+.2f}</span></div>'
         f'<div class="rng">예상 학점 {plan_row["expected_gpa"]:.2f} → {now_row["expected_gpa"]:.2f}</div></div>'

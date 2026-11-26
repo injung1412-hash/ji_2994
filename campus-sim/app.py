@@ -237,18 +237,15 @@ if "flash_message" in st.session_state:
 
 
 if menu == "🏠 홈":
-    ui.hero(
-        f"{APP_TITLE} · {APP_SUBTITLE}",
-        "이번 학기,<br>어디에 시간을 쓸까?",
-        "선택지마다 <b>남는 시간</b>과 <b>예상 학점</b>을 한눈에 비교합니다.",
-    )
+    ui.hero(APP_TITLE, "이번 학기,<br>어디에 시간을 쓸까?", f"{APP_SUBTITLE}.")   # 소개 페이지 첫 화면과 같은 문구
     if st.session_state.table is not None:
         target = ("▶ 결과 보기", "📊 결과")
     elif st.session_state.profile:
         target = ("▶ 이어서 선택지 입력", "🔀 선택지")
     else:
         target = ("▶ 시작하기", "👤 프로필")
-    if st.button(target[0], type="primary"):
+    _, mid, _ = st.columns([1, 1, 1])
+    if mid.button(target[0], type="primary", use_container_width=True):
         go_to(target[1])
 
     ui.stats(

@@ -5,30 +5,36 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>캠퍼스 랩 · 웹 실행</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x2='1' y2='1'%3E%3Cstop stop-color='%233b5bdb'/%3E%3Cstop offset='1' stop-color='%237048e8'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='8' fill='url(%23g)'/%3E%3Cpath d='M27 13 16 8 5 13l11 5 11-5Zm-17 2.5v5c3.5 2.3 8.5 2.3 12 0v-5' fill='none' stroke='white' stroke-width='2' stroke-linejoin='round'/%3E%3C/svg%3E">
-  <meta name="theme-color" content="#3b5bdb">
+  <meta name="theme-color" content="#ffffff">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@stlite/browser@1.12.0/build/stlite.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
   <style>
-    :root { --bg: #ffffff; --fg: #1f2937; --muted: #5a687c; --line: #e5e7eb; --accent: #2563eb; }
+    :root { --bg: #ffffff; --fg: #1d1d1f; --fg-2: #424245; --muted: #6e6e73; --line: #d2d2d7; --link: #0066cc; --nav: rgba(255, 255, 255, .8); }
     @media (prefers-color-scheme: dark) {
-      :root { --bg: #0f172a; --fg: #e5e7eb; --muted: #94a3b8; --line: #1e293b; --accent: #60a5fa; }
+      :root { --bg: #000000; --fg: #f5f5f7; --fg-2: #d2d2d7; --muted: #a1a1a6; --line: #38383c; --link: #2997ff; --nav: rgba(22, 22, 23, .8); }
     }
-    html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
-      font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif; }
-    .bar { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; padding: 8px 16px;
-      border-bottom: 1px solid var(--line); font-size: 14px; }
-    .bar a, .bar button { color: var(--accent); background: none; border: 0; padding: 0; font: inherit;
-      cursor: pointer; text-decoration: none; }
-    .bar a:hover, .bar button:hover { text-decoration: underline; }
-    .bar .note { color: var(--muted); flex: 1 1 280px; }
-    #root { height: calc(100% - 42px); }
+    html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); -webkit-font-smoothing: antialiased;
+      font-family: "Pretendard Variable", Pretendard, "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif; }
+    /* 소개 페이지와 같은 얇고 반투명한 위쪽 막대 */
+    .bar { display: flex; align-items: center; gap: 20px; height: 48px; padding: 0 16px; background: var(--nav);
+      backdrop-filter: saturate(180%) blur(20px); -webkit-backdrop-filter: saturate(180%) blur(20px);
+      border-bottom: 1px solid var(--line); font-size: 13px; }
+    .bar .brand { display: flex; align-items: center; gap: 8px; color: var(--fg); font-weight: 700; font-size: 15px; text-decoration: none; }
+    .bar .logo { width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; font-size: 13px;
+      background: linear-gradient(135deg, #3b5bdb, #7048e8); }
+    .bar .note { color: var(--muted); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .bar button { color: var(--link); background: none; border: 0; padding: 0; font: inherit; cursor: pointer; white-space: nowrap; }
+    .bar button:hover { text-decoration: underline; }
+    .bar :focus-visible { outline: 2px solid #0071e3; outline-offset: 3px; border-radius: 6px; }
+    @media (max-width: 640px) { .bar .note { display: none; } .bar button { margin-left: auto; } }
+    #root { height: calc(100% - 49px); }
   </style>
 </head>
 <body>
   <div class="bar">
-    <a href="./">← 소개 페이지</a>
-    <span class="note">브라우저 안에서 Python으로 실행됩니다. 기록은 이 브라우저에만 저장되고, 웹 버전은 AI 보정 없이 계산식 결과만 보여 줍니다.</span>
-    <button type="button" id="download">내 기록(CSV) 내려받기</button>
+    <a class="brand" href="./"><span class="logo" aria-hidden="true">🎓</span>캠퍼스 랩</a>
+    <span class="note">기록은 이 브라우저에만 저장됩니다 · 웹 버전은 AI 보정 없이 계산식으로 동작</span>
+    <button type="button" id="download">내 기록 CSV 내려받기</button>
   </div>
   <div id="root"></div>
 
@@ -60,23 +66,23 @@
         streamlitConfig: {
           "client.toolbarMode": "viewer",
           "theme.base": "light",
-          "theme.primaryColor": "#3b5bdb",
-          "theme.backgroundColor": "#f6f7fb",
-          "theme.secondaryBackgroundColor": "#eef1f8",
-          "theme.textColor": "#0f172a",
-          "theme.borderColor": "#e2e8f0",
-          "theme.linkColor": "#3b5bdb",
+          "theme.primaryColor": "#0071e3",
+          "theme.backgroundColor": "#ffffff",
+          "theme.secondaryBackgroundColor": "#f5f5f7",
+          "theme.textColor": "#1d1d1f",
+          "theme.borderColor": "#d2d2d7",
+          "theme.linkColor": "#0066cc",
           "theme.font": "Pretendard Variable, Pretendard, sans-serif",
-          "theme.headingFontWeights": 800,
-          "theme.baseRadius": "12px",
-          "theme.buttonRadius": "12px",
+          "theme.headingFontWeights": 700,
+          "theme.baseRadius": "14px",
+          "theme.buttonRadius": "999px",
           "theme.showWidgetBorder": true,
-          "theme.dataframeHeaderBackgroundColor": "#edf2ff",
-          "theme.sidebar.backgroundColor": "#141b3a",
-          "theme.sidebar.secondaryBackgroundColor": "#1f2853",
-          "theme.sidebar.textColor": "#e8ecf6",
-          "theme.sidebar.primaryColor": "#91a7ff",
-          "theme.sidebar.borderColor": "#2a3463",
+          "theme.dataframeHeaderBackgroundColor": "#f5f5f7",
+          "theme.sidebar.backgroundColor": "#f5f5f7",
+          "theme.sidebar.secondaryBackgroundColor": "#ffffff",
+          "theme.sidebar.textColor": "#1d1d1f",
+          "theme.sidebar.primaryColor": "#0071e3",
+          "theme.sidebar.borderColor": "#d2d2d7",
         },
       },
       document.getElementById("root"),

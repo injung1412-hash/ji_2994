@@ -1,26 +1,26 @@
 # 앱 디자인(색 · 글꼴 · 모서리). 계산 로직과는 관계없습니다.
 [theme]
 base = "light"
-primaryColor = "#3b5bdb"
-backgroundColor = "#f6f7fb"
-secondaryBackgroundColor = "#eef1f8"
-textColor = "#0f172a"
-borderColor = "#e2e8f0"
-linkColor = "#3b5bdb"
+primaryColor = "#0071e3"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f5f5f7"
+textColor = "#1d1d1f"
+borderColor = "#d2d2d7"
+linkColor = "#0066cc"
 font = "Pretendard Variable:https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css, sans-serif"
-headingFontWeights = [800, 750, 700, 700, 650, 650]
-baseRadius = "12px"
-buttonRadius = "12px"
+headingFontWeights = [700, 700, 700, 650, 600, 600]
+baseRadius = "14px"
+buttonRadius = "999px"
 showWidgetBorder = true
-dataframeHeaderBackgroundColor = "#edf2ff"
+dataframeHeaderBackgroundColor = "#f5f5f7"
 chartCategoricalColors = ["#2a78d6", "#eb6834", "#1baf7a"]
 
 [theme.sidebar]
-backgroundColor = "#141b3a"
-secondaryBackgroundColor = "#1f2853"
-textColor = "#e8ecf6"
-primaryColor = "#91a7ff"
-borderColor = "#2a3463"
+backgroundColor = "#f5f5f7"
+secondaryBackgroundColor = "#ffffff"
+textColor = "#1d1d1f"
+primaryColor = "#0071e3"
+borderColor = "#d2d2d7"
 
 [client]
 toolbarMode = "viewer"
